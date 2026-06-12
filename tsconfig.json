@@ -21,7 +21,7 @@
 		"paths": {
 			"@/*": ["./src/*"]
 		},
-		"types": ["bun", "node", "@serwist/next/typings"]
+		"types": ["bun", "node"]
 	},
 	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts", "**/*.mts"],
 	"exclude": ["node_modules"]
