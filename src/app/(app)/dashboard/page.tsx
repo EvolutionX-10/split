@@ -8,7 +8,7 @@ export default async function DashboardPage() {
 	const groups = await getGroups();
 
 	return (
-		<div className="flex flex-col px-4 pt-10 pb-6">
+		<div className="flex flex-col px-4 pb-6">
 			<div className="mb-6 flex items-center justify-between">
 				<h1 className="text-xl font-semibold">Your Groups</h1>
 				<Button size="sm" asChild>
