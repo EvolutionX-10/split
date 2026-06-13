@@ -7,7 +7,7 @@ export default async function ProfilePage() {
 	const user = session!.user!;
 
 	return (
-		<div className="flex flex-col px-6 pt-10 pb-6">
+		<div className="flex flex-col px-6 pb-6">
 			<h1 className="mb-8 text-xl font-semibold">Profile</h1>
 
 			<div className="flex items-center gap-4">

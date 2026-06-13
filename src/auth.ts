@@ -11,4 +11,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 		sessionsTable: sessions,
 	}),
 	providers: [Google],
+	callbacks: {
+		async redirect({ url, baseUrl }) {
+			if (url.startsWith("/")) return `${baseUrl}${url}`;
+			if (url.startsWith(baseUrl)) return url;
+			return `${baseUrl}/dashboard`;
+		},
+	},
 });

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import GroupCard from "@/components/group-card";
+import CreateGroupDrawer from "@/components/create-group-drawer";
 
 export default async function DashboardPage() {
 	const groups = await getGroups();
@@ -11,12 +12,7 @@ export default async function DashboardPage() {
 		<div className="flex flex-col px-4 pb-6">
 			<div className="mb-6 flex items-center justify-between">
 				<h1 className="text-xl font-semibold">Your Groups</h1>
-				<Button size="sm" asChild>
-					<Link href="/groups/new">
-						<Plus />
-						New
-					</Link>
-				</Button>
+				{groups.length > 0 && <CreateGroupDrawer />}
 			</div>
 
 			{groups.length === 0 ? (
@@ -42,9 +38,7 @@ function EmptyState() {
 				<p className="text-foreground font-medium">No groups yet</p>
 				<p className="text-muted-foreground mt-1 text-sm">Create a group and invite friends to start splitting</p>
 			</div>
-			<Button asChild className="mt-2">
-				<Link href="/groups/new">Create your first group</Link>
-			</Button>
+			<CreateGroupDrawer />
 		</div>
 	);
 }
