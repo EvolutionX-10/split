@@ -3,5 +3,5 @@ import postgres from "postgres";
 import * as authSchema from "./schema/auth";
 import * as appSchema from "./schema/app";
 
-const client = postgres(process.env.DATABASE_URL);
+const client = postgres(process.env.DATABASE_URL, { prepare: false });
 export const db = drizzle(client, { schema: { ...authSchema, ...appSchema } });

@@ -24,6 +24,7 @@ export default function GroupTabs({ groupId }: Props) {
 
 				return (
 					<Link
+						prefetch={true}
 						key={tab.href}
 						href={href}
 						className={`shrink-0 border-b-2 px-5 py-3 text-sm font-medium transition-colors ${

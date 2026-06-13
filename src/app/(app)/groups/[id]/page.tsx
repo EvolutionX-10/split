@@ -54,7 +54,7 @@ export default async function GroupPage({ params }: Props) {
 					style={{ backgroundColor: group.accentColor }}
 					asChild
 				>
-					<Link href={`/expenses/new?groupId=${group.id}`}>
+					<Link prefetch={true} href={`/expenses/new?groupId=${group.id}`}>
 						<Plus className="h-6 w-6" />
 					</Link>
 				</Button>

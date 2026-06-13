@@ -16,7 +16,7 @@ export default function GroupCard({ group }: { group: Group }) {
 	const amount = Math.abs(group.balance).toFixed(2);
 
 	return (
-		<Link href={`/groups/${group.id}`}>
+		<Link prefetch={true} href={`/groups/${group.id}`}>
 			<div className="border-border bg-card flex items-center gap-4 rounded-2xl border p-4 transition-transform active:scale-[0.98]">
 				{/* Accent dot / avatar */}
 				<div

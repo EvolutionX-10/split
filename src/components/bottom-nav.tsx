@@ -17,7 +17,12 @@ export default function BottomNav() {
 			{items.map(({ href, label, icon: Icon }) => {
 				const active = pathname === href || pathname.startsWith(href + "/");
 				return (
-					<Link key={href} href={href} className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1">
+					<Link
+						prefetch={true}
+						key={href}
+						href={href}
+						className="flex min-h-11 min-w-11 flex-col items-center justify-center gap-1"
+					>
 						<Icon size={22} className={active ? "text-indigo-400" : "text-zinc-500"} />
 						<span className={`text-xs ${active ? "text-indigo-400" : "text-zinc-500"}`}>{label}</span>
 					</Link>
