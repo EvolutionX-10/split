@@ -24,7 +24,7 @@ export default function GroupHeader({ group, isOwner }: Props) {
 	const router = useRouter();
 
 	return (
-		<div className="flex items-center gap-3 px-4 pb-4" style={{ backgroundColor: group.accentColor + "22" }}>
+		<div className="flex items-center gap-3 px-4 pt-4 pb-4" style={{ backgroundColor: group.accentColor + "10" }}>
 			<button
 				onClick={() => router.push("/dashboard")}
 				className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-black/10"
