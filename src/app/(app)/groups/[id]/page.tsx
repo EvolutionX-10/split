@@ -1,4 +1,4 @@
-import { getGroupHome } from "@/lib/actions/groups";
+import { getGroupHomeAction } from "@/lib/actions/groups";
 import { notFound } from "next/navigation";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,12 +11,7 @@ type Props = { params: Promise<{ id: string }> };
 export default async function GroupPage({ params }: Props) {
 	const { id } = await params;
 
-	let data;
-	try {
-		data = await getGroupHome(id);
-	} catch {
-		notFound();
-	}
+	let data = await Promise.try(() => getGroupHomeAction(id)).catch(() => notFound());
 
 	const { group, balances, expenses, currentUserId } = data;
 

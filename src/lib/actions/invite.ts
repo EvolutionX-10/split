@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { groups, groupMembers } from "@/db/schema/app";
 import { auth } from "@/auth";
 import { eq, and, sql } from "drizzle-orm";
+import { updateTag } from "next/cache";
 
 export async function getInviteDetails(token: string) {
 	const result = await db
@@ -65,5 +66,7 @@ export async function acceptInvite(token: string) {
 		role: "member",
 	});
 
+	updateTag("groups");
+	updateTag(`group-${group.id}`);
 	return group;
 }

@@ -1,12 +1,10 @@
-import { getGroups } from "@/lib/actions/groups";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
+import { getUserGroupsAction } from "@/lib/actions/groups";
 import { Plus } from "lucide-react";
 import GroupCard from "@/components/group-card";
 import CreateGroupDrawer from "@/components/create-group-drawer";
 
 export default async function DashboardPage() {
-	const groups = await getGroups();
+	const groups = await getUserGroupsAction();
 
 	return (
 		<div className="flex flex-col px-4 pb-6">

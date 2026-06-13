@@ -1,4 +1,4 @@
-import { getGroupMembers } from "@/lib/actions/groups";
+import { getGroupMembersAction } from "@/lib/actions/groups";
 import { notFound } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Crown } from "lucide-react";
@@ -8,7 +8,7 @@ type Props = { params: Promise<{ id: string }> };
 export default async function MembersPage({ params }: Props) {
 	const { id } = await params;
 
-	let data = await Promise.try(() => getGroupMembers(id)).catch(() => notFound());
+	let data = await Promise.try(() => getGroupMembersAction(id)).catch(() => notFound());
 
 	// TODO: remove member functionality for owners
 	const { members, currentUserId, isOwner: _ } = data;
