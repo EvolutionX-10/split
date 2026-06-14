@@ -14,7 +14,10 @@ export async function getGroups(userId: string) {
 			accentColor: groups.accentColor,
 			description: groups.description,
 			createdAt: groups.createdAt,
-			memberCount: sql<number>`count(distinct ${groupMembers.userId})::int`,
+			memberCount: sql<number>`(
+      select count(*)::int from ${groupMembers} gm2
+      where gm2."groupId" = ${groups.id}
+    )`,
 		})
 		.from(groups)
 		.innerJoin(groupMembers, eq(groups.id, groupMembers.groupId))
