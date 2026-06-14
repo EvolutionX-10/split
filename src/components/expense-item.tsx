@@ -5,7 +5,7 @@ type Expense = {
 	id: string;
 	description: string;
 	amount: string;
-	category: string;
+	category: keyof typeof CATEGORY_ICONS;
 	expenseDate: Date;
 	paidById: string;
 	paidByName: string | null;
@@ -21,7 +21,7 @@ export default function ExpenseItem({ expense, currentUserId }: Props) {
 	return (
 		<div className="border-border bg-card flex items-center gap-3 rounded-xl border px-4 py-3">
 			<div className="bg-muted flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg">
-				{CATEGORY_ICONS[expense.category] ?? "💸"}
+				{CATEGORY_ICONS[expense.category]}
 			</div>
 			<div className="min-w-0 flex-1">
 				<p className="truncate text-sm font-medium">{expense.description}</p>
