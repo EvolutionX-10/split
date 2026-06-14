@@ -67,7 +67,7 @@ export default async function InvitePage({ params }: Props) {
 						<form
 							action={async () => {
 								"use server";
-								await signIn("google");
+								await signIn("google", { redirectTo: `/invite/${token}` });
 							}}
 						>
 							<Button className="w-full" size="lg" type="submit">

@@ -3,6 +3,7 @@ import { withSerwist } from "@serwist/turbopack";
 export default withSerwist({
 	reactCompiler: true,
 	cacheComponents: true,
+	devIndicators: false,
 	images: {
 		remotePatterns: [
 			{
