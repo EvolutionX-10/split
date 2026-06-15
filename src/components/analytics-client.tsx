@@ -110,7 +110,7 @@ export default function AnalyticsClient({ data, groupId, period }: Props) {
 									content={
 										<ChartTooltipContent
 											formatter={(value, name) => [
-												`₹${Number(value).toFixed(2)}`,
+												`₹${Number(value).toFixed(2)} `,
 												CATEGORIES.find((c) => c.value === name)?.label ?? name,
 											]}
 										/>
@@ -144,7 +144,7 @@ export default function AnalyticsClient({ data, groupId, period }: Props) {
 								<XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={8} />
 								<YAxis tickLine={false} axisLine={false} tickFormatter={(v) => `₹${v}`} width={50} />
 								<ChartTooltip
-									content={<ChartTooltipContent formatter={(v) => [`₹${Number(v).toFixed(2)}`, "Paid"]} />}
+									content={<ChartTooltipContent formatter={(v) => [`₹${Number(v).toFixed(2)} `, "Paid"]} />}
 								/>
 								<Bar dataKey="amount" radius={6}>
 									{byMember.map((_, i) => (
@@ -175,7 +175,7 @@ export default function AnalyticsClient({ data, groupId, period }: Props) {
 											<ChartTooltipContent
 												formatter={(v) => [
 													<span className={Number(v) >= 0 ? "text-emerald-500" : "text-rose-500"}>
-														{Number(v) >= 0 ? "+" : ""}₹{Number(v).toFixed(2)}
+														{Number(v) >= 0 ? "+" : ""} ₹{Number(v).toFixed(2)}
 													</span>,
 													"Net Balance",
 												]}
