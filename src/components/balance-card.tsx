@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { settleUp } from "@/lib/actions/settlements";
 import { useRouter } from "next/navigation";
+import { sendReminder } from "@/lib/actions/notifications";
 
 type Props = {
 	balance: { userId: string; name: string; image: string | null; net: number };
@@ -98,10 +99,18 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 									<Button
 										variant="outline"
 										className="flex-1"
-										onClick={() => {
-											// remind — placeholder for notification later
-											setOpen(false);
+										onClick={async () => {
+											setLoading(true);
+											try {
+												await sendReminder(groupId, balance.userId);
+												setOpen(false);
+											} catch {
+												setError("Something went wrong.");
+											} finally {
+												setLoading(false);
+											}
 										}}
+										disabled={loading}
 									>
 										Remind
 									</Button>

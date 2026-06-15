@@ -5,7 +5,7 @@ export const proxy = auth((req) => {
 	const isLoggedIn = !!req.auth;
 	const { pathname } = req.nextUrl;
 
-	const protectedPrefixes = ["/dashboard", "/groups", "/expenses", "/profile"];
+	const protectedPrefixes = ["/dashboard", "/groups", "/expenses", "/profile", "/notifications"];
 	const isProtected = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
 
 	if (isProtected && !isLoggedIn) {

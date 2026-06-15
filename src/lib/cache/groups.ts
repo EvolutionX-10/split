@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { groups, groupMembers, expenses, expenseSplits, settlements } from "@/db/schema/app";
+import { groups, groupMembers, expenses, expenseSplits, settlements, notifications } from "@/db/schema/app";
 import { users } from "@/db/schema/auth";
 import { sql, eq, and, inArray, desc } from "drizzle-orm";
 import { cacheTag } from "next/cache";
@@ -469,3 +469,34 @@ export async function getGroupAnalytics(groupId: string, userId: string, period:
 }
 
 export type Period = "week" | "month" | "6months" | "year" | "all";
+
+export async function getNotificationsCache(userId: string) {
+	"use cache";
+	cacheTag("notifications");
+
+	return db
+		.select({
+			id: notifications.id,
+			type: notifications.type,
+			message: notifications.message,
+			isRead: notifications.isRead,
+			createdAt: notifications.createdAt,
+			groupId: notifications.groupId,
+		})
+		.from(notifications)
+		.where(eq(notifications.userId, userId))
+		.orderBy(desc(notifications.createdAt))
+		.limit(50);
+}
+
+export async function getUnreadCountCache(userId: string) {
+	"use cache";
+	cacheTag("notifications");
+
+	const result = await db
+		.select({ id: notifications.id })
+		.from(notifications)
+		.where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+
+	return result.length;
+}

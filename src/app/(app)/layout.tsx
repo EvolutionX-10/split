@@ -2,10 +2,13 @@ import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import BottomNav from "@/components/bottom-nav";
 import { Suspense } from "react";
+import { getUnreadCountCache } from "@/lib/cache/groups";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
 	const session = await auth();
-	if (!session) redirect("/login");
+	if (!session?.user?.id) redirect("/login");
+
+	const unreadCount = await getUnreadCountCache(session.user.id);
 
 	return (
 		<div className="relative mx-auto flex h-dvh max-w-md flex-col">
@@ -14,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 					{children}
 				</Suspense>
 			</main>
-			<BottomNav />
+			<BottomNav unreadCount={unreadCount} />
 		</div>
 	);
 }
