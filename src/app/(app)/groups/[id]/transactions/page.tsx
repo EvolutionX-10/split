@@ -30,7 +30,6 @@ export default async function TransactionsPage({ params }: Props) {
 		<div className="flex flex-col px-4 py-4">
 			<div className="relative flex flex-col gap-0">
 				{timeline.map((item, index) => {
-					if (item.type === "settlement") console.log("Settlement item:", item); // Debugging line
 					const isMe = item.actorId === currentUserId;
 					const actorLabel = isMe ? "You" : item.actorName;
 					const date = new Intl.DateTimeFormat("en-IN", {
