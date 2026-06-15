@@ -8,7 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 	if (!session) redirect("/login");
 
 	return (
-		<div className="mx-auto flex h-dvh max-w-md flex-col">
+		<div className="relative mx-auto flex h-dvh max-w-md flex-col">
 			<main className="flex-1 overflow-y-auto pb-16">
 				<Suspense fallback={<div className="flex h-full items-center justify-center">Loading...</div>}>
 					{children}

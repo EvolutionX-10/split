@@ -4,6 +4,7 @@ import "./globals.css";
 import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Suspense } from "react";
+import MobileOnly from "@/components/providers/mobile-only";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -34,9 +35,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 		<html lang="en" className={cn("dark font-sans", inter.variable)}>
 			<body>
 				<PWAProvider>
-					<Suspense fallback={<div className="flex h-full items-center justify-center">Loading...</div>}>
-						{children}
-					</Suspense>
+					<MobileOnly>
+						<Suspense fallback={<div className="flex h-full items-center justify-center">Loading...</div>}>
+							{children}
+						</Suspense>
+					</MobileOnly>
 				</PWAProvider>
 			</body>
 		</html>

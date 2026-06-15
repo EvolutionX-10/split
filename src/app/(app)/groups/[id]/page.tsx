@@ -23,7 +23,7 @@ export default async function GroupPage({ params }: Props) {
 					<p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">Balances</p>
 					<div className="flex flex-col gap-2">
 						{balances.map((b) => (
-							<BalanceCard key={b.userId} balance={b} groupId={group.id} />
+							<BalanceCard key={b.userId} balance={b} groupId={group.id} currentUserId={currentUserId} />
 						))}
 					</div>
 				</div>
@@ -47,7 +47,7 @@ export default async function GroupPage({ params }: Props) {
 			</div>
 
 			{/* FAB */}
-			<div className="fixed right-4 bottom-20">
+			<div className="absolute right-4 bottom-20">
 				<Button
 					size="lg"
 					className="h-14 w-14 rounded-full shadow-lg"
