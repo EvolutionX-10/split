@@ -338,3 +338,134 @@ export async function getGroupTransactions(groupId: string, userId: string) {
 
 	return { timeline, currentUserId: userId };
 }
+
+function getPeriodStart(period: Period): Date | null {
+	const now = new Date();
+	switch (period) {
+		case "week":
+			return new Date(now.setDate(now.getDate() - 7));
+		case "month":
+			return new Date(now.setMonth(now.getMonth() - 1));
+		case "6months":
+			return new Date(now.setMonth(now.getMonth() - 6));
+		case "year":
+			return new Date(now.setFullYear(now.getFullYear() - 1));
+		case "all":
+			return null;
+	}
+}
+
+export async function getGroupAnalytics(groupId: string, userId: string, period: Period) {
+	"use cache";
+	cacheTag(`group-${groupId}`);
+
+	const membership = await db
+		.select()
+		.from(groupMembers)
+		.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+		.then((r) => r[0] ?? null);
+
+	if (!membership) throw new Error("Not a member");
+
+	const periodStart = getPeriodStart(period);
+
+	const [allExpenses, allSplits, allMembers] = await Promise.all([
+		db
+			.select({
+				id: expenses.id,
+				amount: expenses.amount,
+				category: expenses.category,
+				paidBy: expenses.paidBy,
+				paidByName: users.name,
+				expenseDate: expenses.expenseDate,
+			})
+			.from(expenses)
+			.innerJoin(users, eq(expenses.paidBy, users.id))
+			.where(
+				and(
+					eq(expenses.groupId, groupId),
+					periodStart ? sql`${expenses.expenseDate} >= ${periodStart.toISOString()}` : undefined,
+				),
+			)
+			.orderBy(expenses.expenseDate),
+
+		db
+			.select({
+				expenseId: expenseSplits.expenseId,
+				userId: expenseSplits.userId,
+				owedAmount: expenseSplits.owedAmount,
+				isSettled: expenseSplits.isSettled,
+			})
+			.from(expenseSplits)
+			.innerJoin(expenses, eq(expenseSplits.expenseId, expenses.id))
+			.where(
+				and(
+					eq(expenses.groupId, groupId),
+					periodStart ? sql`${expenses.expenseDate} >= ${periodStart.toISOString()}` : undefined,
+				),
+			),
+
+		db
+			.select({ id: users.id, name: users.name })
+			.from(groupMembers)
+			.innerJoin(users, eq(groupMembers.userId, users.id))
+			.where(eq(groupMembers.groupId, groupId)),
+	]);
+
+	// Summary
+	const totalSpent = allExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+	const myExpenses = allExpenses.filter((e) => e.paidBy === userId);
+	const youPaid = myExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0);
+	const mySplits = allSplits.filter((s) => s.userId === userId);
+	const yourShare = mySplits.reduce((sum, s) => sum + parseFloat(s.owedAmount), 0);
+
+	// Spending by category
+	const categoryMap: Record<string, number> = {};
+	for (const e of allExpenses) {
+		categoryMap[e.category] = (categoryMap[e.category] ?? 0) + parseFloat(e.amount);
+	}
+	const byCategory = Object.entries(categoryMap).map(([category, amount]) => ({
+		category,
+		amount: parseFloat(amount.toFixed(2)),
+	}));
+
+	// Member contributions (who paid how much)
+	const memberMap: Record<string, { name: string; amount: number }> = {};
+	for (const m of allMembers) memberMap[m.id] = { name: m.id === userId ? "You" : (m.name ?? "Unknown"), amount: 0 };
+	for (const e of allExpenses) {
+		if (memberMap[e.paidBy]) memberMap[e.paidBy].amount += parseFloat(e.amount);
+	}
+	const byMember = Object.values(memberMap).filter((m) => m.amount > 0);
+
+	// Balance over time (cumulative net per day)
+	const splitMap: Record<string, number> = {};
+	for (const s of allSplits) splitMap[s.expenseId] = splitMap[s.expenseId] ?? 0;
+
+	const dailyNet: Record<string, number> = {};
+	for (const e of allExpenses) {
+		const day = e.expenseDate.toISOString().slice(0, 10);
+		const mySplit = allSplits.find((s) => s.expenseId === e.id && s.userId === userId);
+		const myOwed = mySplit ? parseFloat(mySplit.owedAmount) : 0;
+		const iPaid = e.paidBy === userId ? parseFloat(e.amount) : 0;
+		dailyNet[day] = (dailyNet[day] ?? 0) + iPaid - myOwed;
+	}
+
+	// Cumulative
+	let cumulative = 0;
+	const balanceOverTime = Object.entries(dailyNet)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([date, net]) => {
+			cumulative += net;
+			return { date, balance: parseFloat(cumulative.toFixed(2)) };
+		});
+
+	return {
+		summary: { totalSpent, youPaid, yourShare },
+		byCategory,
+		byMember,
+		balanceOverTime,
+		currentUserId: userId,
+	};
+}
+
+export type Period = "week" | "month" | "6months" | "year" | "all";

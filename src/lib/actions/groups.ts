@@ -4,7 +4,14 @@ import { db } from "@/db";
 import { groups, groupMembers } from "@/db/schema/app";
 import { auth } from "@/auth";
 import { type InsertGroup, insertGroupSchema } from "@/db/validators";
-import { getGroupHome, getGroupMembers, getGroups, getGroupTransactions } from "../cache/groups";
+import {
+	getGroupAnalytics,
+	getGroupHome,
+	getGroupMembers,
+	getGroups,
+	getGroupTransactions,
+	type Period,
+} from "../cache/groups";
 import { updateTag } from "next/cache";
 
 export async function getUserGroupsAction() {
@@ -56,4 +63,10 @@ export async function createGroup(input: InsertGroup) {
 
 	updateTag("groups");
 	return group;
+}
+
+export async function getGroupAnalyticsAction(groupId: string, period: Period) {
+	const session = await auth();
+	if (!session?.user?.id) throw new Error("Unauthorized");
+	return getGroupAnalytics(groupId, session.user.id, period);
 }
