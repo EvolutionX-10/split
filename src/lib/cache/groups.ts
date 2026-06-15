@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { groups, groupMembers, expenses, expenseSplits, settlements } from "@/db/schema/app";
 import { users } from "@/db/schema/auth";
-import { sql, eq, and, inArray } from "drizzle-orm";
+import { sql, eq, and, inArray, desc } from "drizzle-orm";
 import { cacheTag } from "next/cache";
 
 export async function getGroups(userId: string) {
@@ -132,7 +132,7 @@ export async function getGroupHome(groupId: string, userId: string) {
 			.from(expenses)
 			.innerJoin(users, eq(expenses.paidBy, users.id))
 			.where(eq(expenses.groupId, groupId))
-			.orderBy(expenses.expenseDate),
+			.orderBy(desc(expenses.expenseDate)),
 
 		// I paid, others owe me — grouped by who owes
 		db
@@ -221,4 +221,120 @@ export async function getGroupMembers(groupId: string, userId: string) {
 		.orderBy(groupMembers.joinedAt);
 
 	return { members, currentUserId: userId, isOwner: membership.role === "owner" };
+}
+
+export async function getGroupTransactions(groupId: string, userId: string) {
+	"use cache";
+	cacheTag(`group-${groupId}`);
+
+	const membership = await db
+		.select()
+		.from(groupMembers)
+		.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, userId)))
+		.then((r) => r[0] ?? null);
+
+	if (!membership) throw new Error("Not a member");
+
+	const [expenseList, settlementList, memberJoins] = await Promise.all([
+		db
+			.select({
+				id: expenses.id,
+				type: sql<string>`'expense'`,
+				description: expenses.description,
+				amount: expenses.amount,
+				category: expenses.category,
+				actorId: expenses.paidBy,
+				actorName: users.name,
+				actorImage: users.image,
+				date: expenses.expenseDate,
+				createdAt: expenses.createdAt,
+			})
+			.from(expenses)
+			.innerJoin(users, eq(expenses.paidBy, users.id))
+			.where(eq(expenses.groupId, groupId)),
+
+		db
+			.select({
+				id: settlements.id,
+				type: sql<string>`'settlement'`,
+				description: sql<string>`null`,
+				amount: settlements.amount,
+				category: sql<string>`null`,
+				actorId: settlements.fromUserId,
+				actorName: users.name,
+				actorImage: users.image,
+				toUserId: settlements.toUserId,
+				date: settlements.settledAt,
+				createdAt: settlements.settledAt,
+			})
+			.from(settlements)
+			.innerJoin(users, eq(settlements.fromUserId, users.id))
+			.where(eq(settlements.groupId, groupId)),
+
+		db
+			.select({
+				id: groupMembers.id,
+				type: sql<string>`'join'`,
+				actorId: users.id,
+				actorName: users.name,
+				actorImage: users.image,
+				date: groupMembers.joinedAt,
+				createdAt: groupMembers.joinedAt,
+			})
+			.from(groupMembers)
+			.innerJoin(users, eq(groupMembers.userId, users.id))
+			.where(eq(groupMembers.groupId, groupId)),
+	]);
+
+	// Get toUser names for settlements
+	const toUserIds = settlementList.map((s) => s.toUserId);
+	const toUsers =
+		toUserIds.length > 0
+			? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, toUserIds))
+			: [];
+	const toUserMap = Object.fromEntries(toUsers.map((u) => [u.id, u.name]));
+
+	const timeline = [
+		...expenseList.map((e) => ({
+			id: e.id,
+			type: "expense" as const,
+			description: e.description,
+			amount: parseFloat(e.amount),
+			category: e.category,
+			actorId: e.actorId,
+			actorName: e.actorName,
+			actorImage: e.actorImage,
+			toUserName: null,
+			toUserId: null,
+			date: e.date,
+		})),
+		...settlementList.map((s) => ({
+			id: s.id,
+			type: "settlement" as const,
+			description: null,
+			amount: parseFloat(s.amount),
+			category: null,
+			actorId: s.actorId,
+			actorName: s.actorName,
+			actorImage: s.actorImage,
+			toUserName: toUserMap[s.toUserId] ?? "someone",
+			toUserId: s.toUserId,
+			date: s.date,
+		})),
+		...memberJoins.map((m) => ({
+			id: m.id,
+			type: "join" as const,
+			description: null,
+			amount: null,
+			category: null,
+			actorId: m.actorId,
+			actorName: m.actorName,
+			actorImage: m.actorImage,
+			toUserName: null,
+			toUserId: null,
+			date: m.date,
+		})),
+	].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+	return { timeline, currentUserId: userId };
 }

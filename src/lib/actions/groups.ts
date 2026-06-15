@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { groups, groupMembers } from "@/db/schema/app";
 import { auth } from "@/auth";
 import { type InsertGroup, insertGroupSchema } from "@/db/validators";
-import { getGroupHome, getGroupMembers, getGroups } from "../cache/groups";
+import { getGroupHome, getGroupMembers, getGroups, getGroupTransactions } from "../cache/groups";
 import { updateTag } from "next/cache";
 
 export async function getUserGroupsAction() {
@@ -23,6 +23,12 @@ export async function getGroupMembersAction(groupId: string) {
 	const session = await auth();
 	if (!session?.user?.id) throw new Error("Unauthorized");
 	return getGroupMembers(groupId, session.user.id);
+}
+
+export async function getGroupTransactionsAction(groupId: string) {
+	const session = await auth();
+	if (!session?.user?.id) throw new Error("Unauthorized");
+	return getGroupTransactions(groupId, session.user.id);
 }
 
 export async function createGroup(input: InsertGroup) {
