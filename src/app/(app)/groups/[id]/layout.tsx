@@ -38,9 +38,7 @@ export default async function GroupLayout({ children, params }: Props) {
 			<GroupHeader group={group} isOwner={membership.role === "owner"} />
 			<GroupTabs groupId={id} />
 			<div className="flex-1 overflow-y-auto">
-				<Suspense fallback={<div className="flex h-full items-center justify-center">Loading...</div>}>
-					{children}
-				</Suspense>
+				<Suspense>{children}</Suspense>
 			</div>
 		</div>
 	);

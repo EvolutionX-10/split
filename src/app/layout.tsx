@@ -36,7 +36,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 			<body>
 				<PWAProvider>
 					<MobileOnly>
-						<Suspense fallback={<div className="flex h-full items-center justify-center">Loading...</div>}>
+						<Suspense
+							fallback={
+								<div className="flex h-full items-center justify-center">Replace with a pretty loading component</div>
+							}
+						>
 							{children}
 						</Suspense>
 					</MobileOnly>
