@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function NotificationsLoading() {
 	return (
-		<div className="flex flex-col px-4 pt-10 pb-6">
+		<div className="flex flex-col px-4 pb-6">
 			<Skeleton className="mb-6 h-7 w-36" />
 			<div className="flex flex-col gap-2">
 				{[1, 2, 3, 4].map((i) => (
