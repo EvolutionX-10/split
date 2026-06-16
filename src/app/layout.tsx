@@ -5,6 +5,7 @@ import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Suspense } from "react";
 import MobileOnly from "@/components/providers/mobile-only";
+import OfflineProvider from "@/components/offline-provider";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -36,13 +37,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 			<body>
 				<PWAProvider>
 					<MobileOnly>
-						<Suspense
-							fallback={
-								<div className="flex h-full items-center justify-center">Replace with a pretty loading component</div>
-							}
-						>
-							{children}
-						</Suspense>
+						<OfflineProvider>
+							<Suspense
+								fallback={
+									<div className="flex h-full items-center justify-center">Replace with a pretty loading component</div>
+								}
+							>
+								{children}
+							</Suspense>
+						</OfflineProvider>
 					</MobileOnly>
 				</PWAProvider>
 			</body>

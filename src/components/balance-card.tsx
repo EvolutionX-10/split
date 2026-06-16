@@ -9,6 +9,8 @@ import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/u
 import { settleUp } from "@/lib/actions/settlements";
 import { useRouter } from "next/navigation";
 import { sendReminder } from "@/lib/actions/notifications";
+import { enqueueMutation } from "@/lib/offline/queue";
+import { isLikelyNetworkError } from "@/lib/offline/utils";
 
 type Props = {
 	balance: { userId: string; name: string; image: string | null; net: number };
@@ -32,17 +34,31 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 
 		setLoading(true);
 		setError("");
+
+		const input = {
+			groupId,
+			fromUserId: currentUserId,
+			toUserId: balance.userId,
+			amount: settleAmount,
+			note,
+		}
 		try {
-			await settleUp({
-				groupId,
-				fromUserId: currentUserId,
-				toUserId: balance.userId,
-				amount: settleAmount,
-				note,
-			});
+			if (!navigator.onLine) {
+				await enqueueMutation({ type: "settle_up", groupId, payload: input });
+				setOpen(false);
+				router.refresh();
+				return;
+			}
+			await settleUp(input);
 			setOpen(false);
 			router.refresh();
-		} catch {
+		} catch (err) {
+			if (isLikelyNetworkError(err)) {
+				await enqueueMutation({ type: "settle_up", groupId, payload: input });
+				setOpen(false);
+				router.refresh();
+				return;
+			}
 			setError("Something went wrong. Try again.");
 		} finally {
 			setLoading(false);
@@ -118,17 +134,30 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 										className="flex-1"
 										onClick={async () => {
 											setLoading(true);
+											const input = {
+												groupId,
+												fromUserId: balance.userId,
+												toUserId: currentUserId, // they pay me
+												amount,
+												note,
+											};
 											try {
-												await settleUp({
-													groupId,
-													fromUserId: balance.userId,
-													toUserId: currentUserId, // they pay me
-													amount,
-													note,
-												});
+												if (!navigator.onLine) {
+													await enqueueMutation({ type: "settle_up", groupId, payload: input });
+													setOpen(false);
+													router.refresh();
+													return;
+												}
+												await settleUp(input);
 												setOpen(false);
 												router.refresh();
-											} catch {
+											} catch (err) {
+												if (isLikelyNetworkError(err)) {
+													await enqueueMutation({ type: "settle_up", groupId, payload: input });
+													setOpen(false);
+													router.refresh();
+													return;
+												}
 												setError("Something went wrong.");
 											} finally {
 												setLoading(false);

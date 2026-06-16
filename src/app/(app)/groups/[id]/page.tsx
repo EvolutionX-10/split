@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import BalanceCard from "@/components/balance-card";
 import ExpenseItem from "@/components/expense-item";
+import PendingMutations from "@/components/pending-mutations";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -32,6 +33,7 @@ export default async function GroupPage({ params }: Props) {
 			{/* Expenses */}
 			<div className="flex flex-col gap-2">
 				<p className="text-muted-foreground text-xs font-medium tracking-widest uppercase">Expenses</p>
+				<PendingMutations groupId={group.id} />
 				{expenses.length === 0 ? (
 					<div className="flex flex-col items-center gap-3 py-16 text-center">
 						<p className="font-medium">No expenses yet</p>

@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Check } from "lucide-react";
 import { CATEGORIES, type CATEGORY_ICONS } from "@/lib/constants";
+import { enqueueMutation } from "@/lib/offline/queue";
+import { isLikelyNetworkError } from "@/lib/offline/utils";
 
 type Member = { id: string; name: string | null; image: string | null };
 type Group = { id: string; name: string; accentColor: string };
@@ -71,20 +73,32 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 		if (!validate()) return;
 
 		setLoading(true);
+		const input = {
+			groupId: group.id,
+			amount,
+			description,
+			category,
+			splitType,
+			paidBy,
+			expenseDate: new Date(expenseDate),
+			splits: buildSplits(),
+		};
+
 		try {
-			await addExpense({
-				groupId: group.id,
-				amount,
-				description,
-				category,
-				splitType,
-				paidBy,
-				expenseDate: new Date(expenseDate),
-				splits: buildSplits(),
-			});
+			if (!navigator.onLine) {
+				await enqueueMutation({ type: "add_expense", groupId: group.id, payload: input });
+				router.push(`/groups/${group.id}`);
+				return;
+			}
+			await addExpense(input);
 			router.push(`/groups/${group.id}`);
-		} catch {
-			setErrors((e) => ({ ...e, submit: "Something went wrong. Try again." }));
+		} catch (err) {
+			if (isLikelyNetworkError(err)) {
+				await enqueueMutation({ type: "add_expense", groupId: group.id, payload: input });
+				router.push(`/groups/${group.id}`);
+			} else {
+				setErrors((e) => ({ ...e, submit: "Something went wrong. Try again." }));
+			}
 		} finally {
 			setLoading(false);
 		}
