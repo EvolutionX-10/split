@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { addExpense } from "@/lib/actions/expenses";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,20 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 	const [percentages, setPercentages] = useState<Record<string, string>>({});
 	const [loading, setLoading] = useState(false);
 	const [errors, setErrors] = useState<Record<string, string>>({});
+	const submittingRef = useRef(false);
+
+	function resetForm() {
+		setAmount("");
+		setDescription("");
+		setCategory("other");
+		setSplitType("equal");
+		setPaidBy(currentUserId);
+		setExpenseDate(new Date().toISOString().slice(0, 16));
+		setIncludedMembers(members.map((m) => m.id));
+		setExactAmounts({});
+		setPercentages({});
+		setErrors({});
+	}
 
 	function toggleMember(id: string) {
 		setIncludedMembers((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
@@ -70,9 +84,12 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 	}
 
 	async function handleSubmit() {
+		if (submittingRef.current) return;
 		if (!validate()) return;
 
+		submittingRef.current = true;
 		setLoading(true);
+
 		const input = {
 			groupId: group.id,
 			amount,
@@ -91,16 +108,19 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 				return;
 			}
 			await addExpense(input);
+			resetForm();
 			router.push(`/groups/${group.id}`);
 		} catch (err) {
 			if (isLikelyNetworkError(err)) {
 				await enqueueMutation({ type: "add_expense", groupId: group.id, payload: input });
+				resetForm();
 				router.push(`/groups/${group.id}`);
 			} else {
 				setErrors((e) => ({ ...e, submit: "Something went wrong. Try again." }));
 			}
 		} finally {
 			setLoading(false);
+			submittingRef.current = false;
 		}
 	}
 

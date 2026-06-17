@@ -8,8 +8,12 @@ type Props = { params: Promise<{ id: string }> };
 export default async function MembersPage({ params }: Props) {
 	const { id } = await params;
 
-	let data = await Promise.try(() => getGroupMembersAction(id)).catch(() => notFound());
+	let data = await Promise.try(() => getGroupMembersAction(id)).catch(() => {
+		console.log("Failed to fetch group members");
+		return null;
+	});
 
+	if (!data) return null;
 	// TODO: remove member functionality for owners
 	const { members, currentUserId, isOwner: _ } = data;
 
