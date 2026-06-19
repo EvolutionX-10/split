@@ -29,3 +29,19 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// Handle cache-on-navigation messages
+self.addEventListener("message", (event) => {
+	if (event.data?.type !== "CACHE_URL") return;
+	const url: string = event.data.url;
+
+	event.waitUntil(
+		caches.open("pages").then((cache) =>
+			fetch(url)
+				.then((res) => {
+					if (res.ok) cache.put(url, res);
+				})
+				.catch(() => {}),
+		),
+	);
+});
