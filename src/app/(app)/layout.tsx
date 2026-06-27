@@ -4,6 +4,7 @@ import BottomNav from "@/components/bottom-nav";
 import { Suspense } from "react";
 import { getUnreadCountCache } from "@/lib/cache/groups";
 import CacheWarmer from "@/components/cache-warmer";
+import FunkyLoader from "@/components/funky-loader";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
 	const session = await auth();
@@ -15,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 		<div className="relative mx-auto flex h-dvh max-w-md flex-col">
 			<CacheWarmer />
 			<main className="flex-1 overflow-y-auto pb-16">
-				<Suspense fallback={<div className="flex h-full items-center justify-center">Loading...</div>}>
+				<Suspense fallback={<FunkyLoader />}>
 					{children}
 				</Suspense>
 			</main>

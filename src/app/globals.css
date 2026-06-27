@@ -128,3 +128,65 @@
 		@apply font-sans;
 	}
 }
+
+/* Funky loader keyframes */
+@keyframes coin-bounce {
+	0%,
+	100% {
+		transform: translateY(0) rotate(0deg);
+	}
+	30% {
+		transform: translateY(-22px) rotate(-12deg);
+	}
+	60% {
+		transform: translateY(0) rotate(8deg);
+	}
+	80% {
+		transform: translateY(-8px) rotate(-4deg);
+	}
+}
+
+@keyframes receipt {
+	0% {
+		transform: translateY(40px) scaleY(0.3);
+		opacity: 0;
+	}
+	30% {
+		transform: translateY(0) scaleY(1);
+		opacity: 1;
+	}
+	70% {
+		transform: translateY(0) scaleY(1);
+		opacity: 1;
+	}
+	100% {
+		transform: translateY(-10px) scaleY(0.95);
+		opacity: 0;
+	}
+}
+
+@keyframes slide-bar {
+	0% {
+		width: 0;
+		left: 0;
+	}
+	50% {
+		width: 70%;
+		left: 15%;
+	}
+	100% {
+		width: 0;
+		left: 100%;
+	}
+}
+
+@keyframes text-pop {
+	0% {
+		transform: translateY(12px);
+		opacity: 0;
+	}
+	100% {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
