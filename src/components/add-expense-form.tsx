@@ -11,11 +11,12 @@ import { ArrowLeft, Check } from "lucide-react";
 import { CATEGORIES, type CATEGORY_ICONS } from "@/lib/constants";
 import { enqueueMutation } from "@/lib/offline/queue";
 import { isLikelyNetworkError } from "@/lib/offline/utils";
+import { calculateSplits, type SplitType } from "@/lib/ledger/splits";
+import { formatMoney } from "@/lib/ledger/money";
 
 type Member = { id: string; name: string | null; image: string | null };
 type Group = { id: string; name: string; accentColor: string };
 type Props = { group: Group; members: Member[]; currentUserId: string };
-type SplitType = "equal" | "percentage" | "exact";
 type Category = keyof typeof CATEGORY_ICONS;
 
 export default function AddExpenseForm({ group, members, currentUserId }: Props) {
@@ -54,30 +55,20 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 	function buildSplits() {
 		return includedMembers.map((userId) => ({
 			userId,
-			amount: exactAmounts[userId],
-			percentage: percentages[userId],
+			...(splitType === "exact" ? { amount: exactAmounts[userId] || "0" } : {}),
+			...(splitType === "percentage" ? { percentage: percentages[userId] || "0" } : {}),
 		}));
 	}
+	const draftSplits = buildSplits();
+	const allocation = calculateSplits({ amount, splitType, splits: draftSplits });
+	const shareAmounts = new Map(allocation.ok ? allocation.shares.map((share) => [share.userId, share.amount]) : []);
 
 	function validate() {
 		const newErrors: Record<string, string> = {};
 
-		if (!amount || parseFloat(amount) <= 0) newErrors.amount = "Enter a valid amount";
+		if (!allocation.ok) newErrors[allocation.field] = allocation.message;
 
 		if (!description.trim()) newErrors.description = "Required";
-
-		if (includedMembers.length === 0) newErrors.members = "Include at least one member";
-
-		if (splitType === "percentage") {
-			const total = includedMembers.reduce((sum, id) => sum + parseFloat(percentages[id] ?? "0"), 0);
-			if (Math.abs(total - 100) > 0.01) newErrors.splits = `Must add up to 100% (currently ${total.toFixed(1)}%)`;
-		}
-
-		if (splitType === "exact") {
-			const total = includedMembers.reduce((sum, id) => sum + parseFloat(exactAmounts[id] ?? "0"), 0);
-			if (Math.abs(total - parseFloat(amount || "0")) > 0.01)
-				newErrors.splits = `Must add up to ₹${amount} (currently ₹${total.toFixed(2)})`;
-		}
 
 		setErrors(newErrors);
 		return Object.keys(newErrors).length === 0;
@@ -98,7 +89,7 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 			splitType,
 			paidBy,
 			expenseDate: new Date(expenseDate),
-			splits: buildSplits(),
+			splits: draftSplits,
 		};
 
 		try {
@@ -140,10 +131,13 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 			<div className="flex flex-1 flex-col gap-5 overflow-y-auto px-4 py-4 pb-24">
 				{/* Amount */}
 				<div className="flex flex-col items-center gap-1 py-4">
-					<Label className="text-muted-foreground text-sm">Amount</Label>
+					<Label htmlFor="expense-amount" className="text-muted-foreground text-sm">
+						Amount
+					</Label>
 					<div className="flex items-center gap-1">
 						<span className="text-muted-foreground text-4xl font-light">₹</span>
 						<input
+							id="expense-amount"
 							type="number"
 							inputMode="decimal"
 							placeholder="0.00"
@@ -160,8 +154,9 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 
 				{/* Description */}
 				<div className="flex flex-col gap-1.5">
-					<Label>Description</Label>
+					<Label htmlFor="expense-description">Description</Label>
 					<Input
+						id="expense-description"
 						placeholder="What's this for?"
 						value={description}
 						onChange={(e) => {
@@ -249,6 +244,8 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 						{members.map((m) => (
 							<div key={m.id} className="border-border bg-card flex items-center gap-3 rounded-xl border px-4 py-3">
 								<button
+									aria-label={`Include ${m.id === currentUserId ? "You" : m.name}`}
+									aria-pressed={includedMembers.includes(m.id)}
 									onClick={() => {
 										toggleMember(m.id);
 										if (errors.members) setErrors((p) => ({ ...p, members: "" }));
@@ -265,11 +262,22 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 									<AvatarFallback>{m.name?.charAt(0)}</AvatarFallback>
 								</Avatar>
 
-								<span className="flex-1 text-sm font-medium">{m.id === currentUserId ? "You" : m.name}</span>
+								<div className="min-w-0 flex-1">
+									<span className="block truncate text-sm font-medium">{m.id === currentUserId ? "You" : m.name}</span>
+									{includedMembers.includes(m.id) && allocation.ok && (
+										<output
+											aria-label={`Share for ${m.id === currentUserId ? "You" : m.name}`}
+											className="text-muted-foreground block text-sm tabular-nums"
+										>
+											₹{shareAmounts.get(m.id)}
+										</output>
+									)}
+								</div>
 
 								{includedMembers.includes(m.id) && splitType === "percentage" && (
 									<div className="flex items-center gap-1">
 										<input
+											aria-label={`Percentage for ${m.id === currentUserId ? "You" : m.name}`}
 											type="number"
 											inputMode="decimal"
 											placeholder="0"
@@ -288,6 +296,7 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 									<div className="flex items-center gap-1">
 										<span className="text-muted-foreground text-sm">₹</span>
 										<input
+											aria-label={`Exact amount for ${m.id === currentUserId ? "You" : m.name}`}
 											type="number"
 											inputMode="decimal"
 											placeholder="0.00"
@@ -300,17 +309,19 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 										/>
 									</div>
 								)}
-
-								{includedMembers.includes(m.id) && splitType === "equal" && amount && (
-									<span className="text-muted-foreground text-sm">
-										₹{(parseFloat(amount) / includedMembers.length).toFixed(2)}
-									</span>
-								)}
 							</div>
 						))}
 					</div>
 					{errors.members && <p className="text-destructive text-xs">{errors.members}</p>}
 					{errors.splits && <p className="text-destructive text-xs">{errors.splits}</p>}
+					{!allocation.ok && allocation.remaining && (
+						<p role="status" className="text-muted-foreground text-sm tabular-nums">
+							{allocation.remaining.unit === "paise" ? "₹" : ""}
+							{formatMoney(Math.abs(allocation.remaining.value))}
+							{allocation.remaining.unit === "basisPoints" ? "%" : ""}
+							{allocation.remaining.value > 0 ? " left to allocate" : " over allocated"}
+						</p>
+					)}
 				</div>
 
 				{errors.submit && <p className="text-destructive text-sm">{errors.submit}</p>}

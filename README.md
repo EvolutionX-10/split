@@ -159,6 +159,44 @@ expenses support up to 100 distinct split participants, and exact/percentage inp
 must total the expense/100%. Reminders require a positive current debt between the
 sender and recipient and allow one reminder per sender/recipient/group per 24 hours.
 
+Equal and percentage splits now allocate whole paise with the largest-remainder method;
+ties use stable participant ID order. The form shows each person's actual saved share,
+including zero shares for tiny bills, and exact/percentage inputs show the remaining
+amount to allocate. The preview and server use the same pure calculation module.
+Expenses with their splits, groups with their owner, and invite memberships with their
+join notifications commit together or roll back together. Concurrent joins are serialized.
+
+Run `bun test tests/splits.test.ts` for calculation checks without a database, or
+`bun run benchmark:splits` for a local calculation-only p50/p95 report (2–100 people).
+The full suite includes seeded property checks, forced-write failures, concurrent joins,
+and migration tests in disposable schemas.
+
+### Ledger preflight and membership migration
+
+Before applying the new membership constraint to an existing database, run the read-only
+report in [`scripts/audit-ledger.sql`](scripts/audit-ledger.sql). With a PostgreSQL client,
+set `AUDIT_DATABASE_URL` explicitly to the intended database and run:
+
+```bash
+psql "$AUDIT_DATABASE_URL" --set ON_ERROR_STOP=1 --file scripts/audit-ledger.sql
+```
+
+The report lists duplicate memberships (including IDs and roles), missing/duplicate/negative
+shares, totals that do not reconcile, and participants outside their recorded group.
+Historical membership changes can also explain some membership findings; inspect the
+records before deciding on repairs. It runs in a read-only transaction with a statement
+timeout and never changes history. Treat report output as private financial data.
+
+Resolve duplicate memberships explicitly, retaining the intended role and join history;
+then apply [`drizzle/0001_unique_group_members.sql`](drizzle/0001_unique_group_members.sql)
+through your database migration process. The constraint refuses duplicates without
+deleting any rows. For installations created with `db:push` and no migration history,
+apply the reviewed incremental SQL through your database administration tooling;
+do not replay `0000_mighty_skrulls.sql` against an existing database. New installations
+can use the current schema as described in setup. No automatic repair or production
+migration runs as part of the build. The new join transaction also works before the
+constraint is installed, so rollout does not depend on an `ON CONFLICT` target existing.
+
 ## Database Schema
 
 ```
@@ -196,6 +234,9 @@ src/
     actions/                Server actions (groups, expenses, settlements, notifications)
     cache/                  "use cache" data fetching functions
     offline/                IndexedDB queue, sync engine, utils
+    ledger/                 Shared money parsing and deterministic split allocation
+    server/                 Internal server-only helpers
+    validation/             Request validation shared with ledger calculations
     constants.ts            Category icons, labels
 ```
 

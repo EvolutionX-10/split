@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, pgEnum, boolean, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { users } from "./auth";
 
@@ -45,19 +45,23 @@ export const groups = pgTable("groups", {
 
 // --- Group Members ---
 
-export const groupMembers = pgTable("group_members", {
-	id: text("id")
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	groupId: text("groupId")
-		.notNull()
-		.references(() => groups.id, { onDelete: "cascade" }),
-	userId: text("userId")
-		.notNull()
-		.references(() => users.id, { onDelete: "cascade" }),
-	role: memberRoleEnum("role").notNull().default("member"),
-	joinedAt: timestamp("joinedAt", { mode: "date" }).notNull().defaultNow(),
-});
+export const groupMembers = pgTable(
+	"group_members",
+	{
+		id: text("id")
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		groupId: text("groupId")
+			.notNull()
+			.references(() => groups.id, { onDelete: "cascade" }),
+		userId: text("userId")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		role: memberRoleEnum("role").notNull().default("member"),
+		joinedAt: timestamp("joinedAt", { mode: "date" }).notNull().defaultNow(),
+	},
+	(table) => [unique("group_members_group_user_unique").on(table.groupId, table.userId)],
+);
 
 // --- Expenses ---
 

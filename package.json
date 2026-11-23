@@ -8,6 +8,7 @@
 		"start": "next start",
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
+		"benchmark:splits": "bun scripts/benchmark-splits.ts",
 		"db:push": "drizzle-kit push"
 	},
 	"dependencies": {
