@@ -46,19 +46,13 @@ export async function createGroup(input: InsertGroup) {
 	const parsed = insertGroupSchema.safeParse(input);
 	if (!parsed.success) throw new Error(parsed.error.message);
 
-	const [group] = await db
-		.insert(groups)
-		.values({
-			...parsed.data,
-			createdBy: userId,
-		})
-		.returning();
-
-	// Add creator as owner
-	await db.insert(groupMembers).values({
-		groupId: group.id,
-		userId,
-		role: "owner",
+	const group = await db.transaction(async (tx) => {
+		const [created] = await tx
+			.insert(groups)
+			.values({ ...parsed.data, createdBy: userId })
+			.returning();
+		await tx.insert(groupMembers).values({ groupId: created.id, userId, role: "owner" });
+		return created;
 	});
 
 	updateTag("groups");

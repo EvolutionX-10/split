@@ -6,6 +6,7 @@ import { eq, sql } from "drizzle-orm";
 import * as appSchema from "@/db/schema/app";
 import * as authSchema from "@/db/schema/auth";
 import type { AddExpenseInput } from "@/lib/actions/expenses";
+import { calculateSplits } from "@/lib/ledger/splits";
 
 // Never fall back to DATABASE_URL or the app's .env.local connection.
 const testUrl = process.env.TEST_DATABASE_URL;
@@ -30,7 +31,7 @@ const updateTag = mock((_tag: string) => {});
 // Only framework/session boundaries are replaced. All queries and writes use real Postgres.
 mock.module("@/db", () => ({ db }));
 mock.module("@/auth", () => ({ auth: async () => (currentUserId ? { user: { id: currentUserId } } : null) }));
-mock.module("next/cache", () => ({ updateTag }));
+mock.module("next/cache", () => ({ updateTag, cacheTag: () => {} }));
 mock.module("server-only", () => ({}));
 
 const { addExpense } = await import("@/lib/actions/expenses");
@@ -38,6 +39,7 @@ const { settleUp } = await import("@/lib/actions/settlements");
 const notificationActions = await import("@/lib/actions/notifications");
 const { sendReminder, markRead, markAllRead } = notificationActions;
 const { acceptInvite } = await import("@/lib/actions/invite");
+const { createGroup } = await import("@/lib/actions/groups");
 const { users } = authSchema;
 const { groups, groupMembers, expenses, expenseSplits, settlements, notifications } = appSchema;
 const groupId = "10000000-0000-4000-8000-000000000001";
@@ -83,6 +85,9 @@ beforeAll(async () => {
 		const migration = await readFile(new URL(`../drizzle/${entry.tag}.sql`, import.meta.url), "utf8");
 		await client.unsafe(migration.replaceAll('"public".', `"${schemaName}".`));
 	}
+	await client.unsafe(`CREATE FUNCTION reject_test_write() RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN RAISE EXCEPTION 'injected write failure'; END;
+	$$`);
 });
 
 afterAll(async () => {
@@ -91,6 +96,177 @@ afterAll(async () => {
 	} finally {
 		await client.end();
 	}
+});
+
+async function withRejectedInsert(
+	table: "expense_splits" | "group_members" | "notifications",
+	check: () => Promise<void>,
+) {
+	await client.unsafe(
+		`CREATE TRIGGER reject_test_insert BEFORE INSERT ON "${table}" FOR EACH ROW EXECUTE FUNCTION reject_test_write()`,
+	);
+	try {
+		await check();
+	} finally {
+		await client.unsafe(`DROP TRIGGER reject_test_insert ON "${table}"`);
+	}
+}
+
+describe("allocation persistence and atomic writes", () => {
+	test.each([
+		{
+			amount: "0.03",
+			splitType: "equal",
+			splits: ["alice", "bob", "carol", "dave", "eve"].map((userId) => ({ userId })),
+		},
+		{
+			amount: "0.05",
+			splitType: "percentage",
+			splits: [
+				{ userId: "bob", percentage: "50" },
+				{ userId: "alice", percentage: "50" },
+			],
+		},
+		{
+			amount: "99999999.99",
+			splitType: "percentage",
+			splits: [
+				{ userId: "alice", percentage: "33.33" },
+				{ userId: "bob", percentage: "66.67" },
+			],
+		},
+	] satisfies Partial<AddExpenseInput>[])(
+		"persists the same conserved shares shown in the preview: %j",
+		async (input) => {
+			await db.insert(users).values([{ id: "dave" }, { id: "eve" }]);
+			await db.insert(groupMembers).values([
+				{ groupId, userId: "dave" },
+				{ groupId, userId: "eve" },
+			]);
+			const draft = expense(input);
+			const preview = calculateSplits(draft);
+			if (!preview.ok) throw new Error(preview.message);
+			const created = await addExpense(draft);
+			const saved = await db
+				.select({ userId: expenseSplits.userId, amount: expenseSplits.owedAmount })
+				.from(expenseSplits)
+				.where(eq(expenseSplits.expenseId, created.id));
+			expect(Object.fromEntries(saved.map((s) => [s.userId, s.amount]))).toEqual(
+				Object.fromEntries(preview.shares.map((s) => [s.userId, s.amount])),
+			);
+			const [totals] = await db
+				.select({
+					allocated: sql<string>`sum(${expenseSplits.owedAmount})`,
+					negative: sql<number>`count(*) filter (where ${expenseSplits.owedAmount} < 0)::int`,
+				})
+				.from(expenseSplits);
+			expect(totals).toEqual({ allocated: created.amount, negative: 0 });
+		},
+	);
+
+	test("a split insertion failure rolls the expense back and does not invalidate caches", async () => {
+		await withRejectedInsert("expense_splits", async () => {
+			await expect(addExpense(expense())).rejects.toThrow();
+			await expectNoWrites();
+		});
+		await addExpense(expense());
+		expect(await db.select().from(expenses)).toHaveLength(1);
+		expect(await db.select().from(expenseSplits)).toHaveLength(2);
+	});
+
+	test("creating a group commits its owner membership with it", async () => {
+		const created = await createGroup({ name: "New group", accentColor: "#6366f1" });
+		expect(
+			await db
+				.select({ userId: groupMembers.userId, role: groupMembers.role })
+				.from(groupMembers)
+				.where(eq(groupMembers.groupId, created.id)),
+		).toEqual([{ userId: "alice", role: "owner" }]);
+	});
+
+	test("owner insertion failure leaves no orphan group or cache invalidation", async () => {
+		await withRejectedInsert("group_members", async () => {
+			await expect(createGroup({ name: "Should roll back", accentColor: "#6366f1" })).rejects.toThrow();
+			expect(await db.select().from(groups)).toHaveLength(2);
+			expect(await db.select().from(groupMembers)).toHaveLength(4);
+			expect(updateTag).not.toHaveBeenCalled();
+		});
+	});
+
+	test("concurrent invite acceptance creates one membership and one set of notifications", async () => {
+		currentUserId = "outsider";
+		const joined = await Promise.all(Array.from({ length: 8 }, () => acceptInvite("friends-invite")));
+		expect(joined.every((g) => g.id === groupId)).toBe(true);
+		expect(
+			await db
+				.select()
+				.from(groupMembers)
+				.where(sql`${groupMembers.groupId} = ${groupId} and ${groupMembers.userId} = 'outsider'`),
+		).toHaveLength(1);
+		expect(await db.select().from(notifications)).toHaveLength(3);
+		expect(updateTag.mock.calls).toHaveLength(3);
+	});
+
+	test("notification failure rolls the invite membership back and retry succeeds once", async () => {
+		currentUserId = "outsider";
+		await withRejectedInsert("notifications", async () => {
+			await expect(acceptInvite("friends-invite")).rejects.toThrow();
+			expect(await db.select().from(groupMembers)).toHaveLength(4);
+			expect(await db.select().from(notifications)).toHaveLength(0);
+			expect(updateTag).not.toHaveBeenCalled();
+		});
+		await acceptInvite("friends-invite");
+		await acceptInvite("friends-invite");
+		expect(await db.select().from(groupMembers)).toHaveLength(5);
+		expect(await db.select().from(notifications)).toHaveLength(3);
+	});
+
+	test("the database rejects a duplicate membership independently of action code", async () => {
+		await expect(db.insert(groupMembers).values({ groupId, userId: "alice" }).execute()).rejects.toThrow();
+		expect(await db.select().from(groupMembers)).toHaveLength(4);
+	});
+
+	test("the historical audit is read-only and the migration refuses duplicates without deleting data", async () => {
+		const legacySchema = `split_legacy_${crypto.randomUUID().replaceAll("-", "")}`;
+		const legacy = postgres(target.href, {
+			prepare: false,
+			max: 1,
+			connection: { search_path: legacySchema },
+			onnotice: () => {},
+		});
+		try {
+			await legacy.unsafe(`CREATE SCHEMA "${legacySchema}"`);
+			const initial = await readFile(new URL("../drizzle/0000_mighty_skrulls.sql", import.meta.url), "utf8");
+			await legacy.unsafe(initial.replaceAll('"public".', `"${legacySchema}".`));
+			await legacy`insert into users(id) values ('a'), ('b')`;
+			await legacy`insert into groups(id,name,"createdBy","inviteToken") values ('legacy-group','Legacy','a','token')`;
+			await legacy`insert into group_members(id,"groupId","userId",role) values ('keep-owner','legacy-group','a','owner'),('duplicate-member','legacy-group','a','member')`;
+			await legacy`insert into expenses(id,"groupId","paidBy",amount,description) values ('legacy-drift','legacy-group','a',0.05,'Historical rounding'),('legacy-negative','legacy-group','a',0.03,'Historical negative')`;
+			await legacy`insert into expense_splits(id,"expenseId","userId","owedAmount") values ('s1','legacy-drift','a',0.03),('s2','legacy-drift','b',0.03),('s3','legacy-negative','a',-0.01),('s4','legacy-negative','b',0.04)`;
+			const before = [...(await legacy`select * from expense_splits order by id`)];
+			const audit = await readFile(new URL("../scripts/audit-ledger.sql", import.meta.url), "utf8");
+			const report = JSON.stringify(await legacy.unsafe(audit).simple());
+			expect(report).toContain('"membershipCount":"2"');
+			expect(report).toContain("legacy-drift");
+			expect(report).toContain("legacy-negative");
+			expect([...(await legacy`select * from expense_splits order by id`)]).toEqual(before);
+			const migration = await readFile(new URL("../drizzle/0001_unique_group_members.sql", import.meta.url), "utf8");
+			const failure = await legacy.unsafe(migration).then(
+				() => null,
+				(error) => error,
+			);
+			expect(failure?.code).toBe("23505");
+			expect(await legacy`select id from group_members`).toHaveLength(2);
+			// Explicit fixture repair, preserving the owner; the migration never chooses this itself.
+			await legacy`delete from group_members where id='duplicate-member'`;
+			await legacy.unsafe(migration);
+			expect((await legacy`select role from group_members`).map((row) => row.role)).toEqual(["owner"]);
+			expect([...(await legacy`select * from expense_splits order by id`)]).toEqual(before);
+		} finally {
+			await legacy.unsafe(`DROP SCHEMA IF EXISTS "${legacySchema}" CASCADE`);
+			await legacy.end();
+		}
+	});
 });
 
 beforeEach(async () => {

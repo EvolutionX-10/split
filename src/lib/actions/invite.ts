@@ -44,32 +44,23 @@ export async function acceptInvite(token: string) {
 	if (!session?.user?.id) throw new Error("Unauthorized");
 	const userId = session.user.id;
 
-	const group = await db
-		.select({ id: groups.id })
-		.from(groups)
-		.where(eq(groups.inviteToken, token))
-		.then((r) => r[0] ?? null);
-
-	if (!group) throw new Error("Invalid invite");
-
-	// Check not already a member
-	const existing = await db
-		.select()
-		.from(groupMembers)
-		.where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)))
-		.then((r) => r[0] ?? null);
-
-	if (existing) return group; // already in, just redirect
-
-	await db.insert(groupMembers).values({
-		groupId: group.id,
-		userId,
-		role: "member",
+	const result = await db.transaction(async (tx) => {
+		// Serialize joins for this group so membership and its notifications are created once.
+		const [group] = await tx.select({ id: groups.id }).from(groups).where(eq(groups.inviteToken, token)).for("update");
+		if (!group) throw new Error("Invalid invite");
+		const [existing] = await tx
+			.select({ id: groupMembers.id })
+			.from(groupMembers)
+			.where(and(eq(groupMembers.groupId, group.id), eq(groupMembers.userId, userId)));
+		if (existing) return { group, joined: false };
+		await tx.insert(groupMembers).values({ groupId: group.id, userId, role: "member" });
+		await createMemberJoinedNotifications(group.id, userId, tx);
+		return { group, joined: true };
 	});
-
-	await createMemberJoinedNotifications(group.id, userId);
-
-	updateTag("groups");
-	updateTag(`group-${group.id}`);
-	return group;
+	if (result.joined) {
+		updateTag("notifications");
+		updateTag("groups");
+		updateTag(`group-${result.group.id}`);
+	}
+	return result.group;
 }

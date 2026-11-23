@@ -33,9 +33,49 @@ database: group access, reminder persistence, cooldown feedback, already-paid fe
 with a stale open drawer, and anonymous redirect all passed without uncaught page errors.
 Google OAuth itself was not exercised.
 
-**Still open:** P0-C shared allocation/rounding, P0-D/E queue ownership/idempotency,
-P1-A atomic ledger/group creation and membership uniqueness, and all responsive work.
-The audit below describes the original revision; this section records the fixes since then.
+Remaining after this step: shared allocation/rounding, atomic writes, queue safety, and responsive work.
+
+### Shared allocation and atomic writes — 23 November 2026
+
+- [x] **P0-C:** Shared decimal parsing and integer-paise allocation now drive both the
+      form and server. Equal/percentage splits conserve the bill, allocate remainders by
+      fractional share then stable participant ID, and allow zero shares without negatives.
+      Exact inputs require exact totals; the form displays under/over allocation immediately.
+- [x] **P1-A implementation:** Expense/split, group/owner, and invite/notification writes
+      now run in transactions; caches invalidate after commit. Concurrent joins lock the
+      group row. Add a generated migration for unique `(groupId, userId)` memberships.
+- [x] Add a [read-only historical audit](scripts/audit-ledger.sql). It reports duplicate
+      memberships, reconciliation errors, negative/duplicate/missing shares, and participants
+      outside the recorded group. No historical allocations or roles are automatically repaired.
+
+Validation: **100 tests passed** across calculation and real-Postgres suites, including
+1,000 seeded fixtures for each of equal/percentage allocation, order independence,
+maximum amounts, preview/persistence agreement, injected rollback failures, eight-way
+concurrent joins, and safe migration refusal on historical duplicates. Generated metadata
+changes only the membership unique constraint. TypeScript and the production build passed.
+
+Production Chromium checks covered equal/percentage/exact previews and saved rows,
+one-paise validation, keyboard field navigation, and local previews while offline. The
+form fit 320/390/767px widths with a long member name; the existing desktop gate remains
+at 768px and above. No uncaught page errors occurred. Tests used a standard database
+session in a disposable database; Google OAuth was not exercised.
+
+Calculation-only Chromium microbenchmarks on an Intel Xeon Platinum 8573C with 4× CPU
+throttling measured p95 around **0.16ms for 50 members** and **0.24ms for 100 members**.
+These are batched synthetic samples, excluding render/network costs, not mobile-device
+or Core Web Vitals measurements. The [validation report](docs/audit/2026-11-23/allocation-report.json)
+records the browser, fixture sizes, warmup, batches, and checksum; `bun run benchmark:splits`
+provides a repeatable local Bun benchmark. Ordinary form splitting does not currently
+justify a worker based on these results.
+
+Rollout: run the audit and review duplicate memberships before applying
+`drizzle/0001_unique_group_members.sql`. The migration refuses duplicates without
+removing them; production data has not been inspected or modified. README documents
+incremental rollout for existing databases created with `db:push`.
+
+**Still open:** P0-D/E queue ownership/idempotency, analytics/timezone improvements,
+responsive layouts, and the feature backlog. The audit below describes the original
+revision; the progress sections above record subsequent fixes.
 
 ## 1. What exists and how it feels
 
