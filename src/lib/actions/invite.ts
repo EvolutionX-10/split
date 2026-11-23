@@ -5,7 +5,7 @@ import { groups, groupMembers } from "@/db/schema/app";
 import { auth } from "@/auth";
 import { eq, and, sql } from "drizzle-orm";
 import { updateTag } from "next/cache";
-import { createMemberJoinedNotifications } from "./notifications";
+import { createMemberJoinedNotifications } from "@/lib/server/notifications";
 
 export async function getInviteDetails(token: string) {
 	const result = await db

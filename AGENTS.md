@@ -31,9 +31,12 @@ Keep each PR focused and update completed roadmap items with actual validation e
 
 - Bun is the intended package manager; preserve `bun.lock` and use `bun install --frozen-lockfile`.
 - Development: `bun run dev`; production checks: `bun run build`, then `bun run start`.
-- Type checking: `bunx tsc --noEmit`; format changed Markdown with `bunx prettier --check <files>`.
-- There are currently no `test`, `lint`, or `typecheck` package scripts. Inspect available
-  scripts rather than claiming these commands exist. Add runners alongside meaningful tests.
+- Type checking: `bun run typecheck`; format changed files with `bunx prettier --check --end-of-line auto <files>`.
+- Action regression tests: `bun run test`, with a dedicated local `TEST_DATABASE_URL`
+  ending in `_test`; see `README.md`. The suite uses real Postgres in an isolated schema,
+  substitutes framework/session boundaries, and never falls back to `DATABASE_URL`.
+- CI uses Bun 1.3.14 and Postgres 17. There is no `lint` script; inspect available scripts
+  rather than claiming commands exist. Preserve existing line endings in edited files.
 - If Bun is unavailable and dependencies are installed, `node node_modules/typescript/bin/tsc --noEmit`
   and `node node_modules/next/dist/bin/next build` are fallback checks. Report the runtime used.
 - PWA behavior must be checked against a production build; development disables the service worker.
