@@ -73,8 +73,52 @@ Rollout: run the audit and review duplicate memberships before applying
 removing them; production data has not been inspected or modified. README documents
 incremental rollout for existing databases created with `db:push`.
 
-**Still open:** P0-D/E queue ownership/idempotency, analytics/timezone improvements,
-responsive layouts, and the feature backlog. The audit below describes the original
+Remaining after this step: queue ownership/idempotency, analytics/timezone improvements,
+responsive layouts, and the feature backlog.
+
+### Account-isolated queue and duplicate-safe replay — 23 November 2026
+
+- [x] **P0-D:** Version-2 IndexedDB rows have an immutable account/request identity.
+      Every query, retry, and discard is scoped to that account. Sign-out preserves
+      queued changes, locks stale tabs, and uses a full navigation; session verification
+      and page-hide gating protect returning account views. Older unowned rows remain
+      untouched for manual recovery and are never assigned to a new login.
+- [x] **P0-E:** A write-ahead client queue persists the request ID before online or
+      offline submissions. PostgreSQL advisory transaction locks and a composite receipt
+      primary key serialize replays. Ledger writes and receipts commit together; identical
+      retries return the original record and changed payloads conflict. Every replay
+      rechecks account, session, and group authorization.
+- [x] **P1-C:** Saved-changes screens and banners distinguish waiting/syncing/paused/failed
+      work, update immediately, refresh after acknowledgement, and offer explicit retry
+      or confirmed local discard. A failed observer cannot turn a durable save into a
+      false failure and cause a second request ID.
+- [x] Remove private URL-keyed HTML/RSC/API caching and the navigation cache warmer.
+      The new worker clears known legacy runtime caches and caches public assets only.
+      This deliberately changes offline reloads to a generic fallback; loaded forms
+      still save offline, and pending changes stay on the device. Complete account-scoped
+      offline snapshots are not implemented by this step.
+
+Validation: **121 tests passed** across real Postgres, IndexedDB, and calculation suites.
+Cases include expense/payment replay after lost responses, concurrent requests, changed
+payload races, independent owners, explicit receipt uniqueness, ledger/receipt rollback,
+account switching, expired sessions, legacy quarantine, immediate notifications, and
+explicit retry after rejection. Type checking and the production build passed.
+
+Production Chromium checked a real database session with two accounts and a service
+worker: old-cache removal, lost-response recovery without duplicate writes, offline
+saves, A/B queue isolation, membership rejection/retry, actual sign-out preservation,
+returning-account replay, storage failure without a write, and a public offline reload
+without private content. No uncaught page errors occurred. See the
+[browser report](docs/audit/2026-11-23/offline-report.json). Google OAuth was not exercised.
+
+Rollout: apply `drizzle/0002_mutation_receipts.sql` before deploying. The new table is
+empty initially and does not alter historical ledger rows. Old clients without ownership
+and request IDs cannot write; reload old tabs. Retain receipts to protect delayed retries.
+Production data has not been inspected or modified. README documents legacy recovery
+and the reduced offline page-caching behavior explicitly.
+
+**Still open:** responsive layouts, analytics/timezone improvements, complete scoped
+offline snapshots, and the feature backlog. The audit below describes the original
 revision; the progress sections above record subsequent fixes.
 
 ## 1. What exists and how it feels
@@ -241,8 +285,8 @@ local data model.
    projected balances as pending, distinguish offline from server rejection, and show
    last-sync time. Membership removal must block replay and clear inaccessible snapshots.
 5. **Remove avoidable work.** Replace nested split searches with maps; paginate database
-   history queries with stable `(date, id)` cursors. Bound prefetch work in `cache-warmer.tsx`
-   and narrow broad `"groups"` invalidation to affected users/groups. Load charts only
+   history queries with stable `(date, id)` cursors. Revisit prefetch only with account-safe
+   storage; the old cache warmer was removed. Narrow broad `"groups"` invalidation to affected users/groups. Load charts only
    where needed. Profile before adding manual memoization to React Compiler output.
 6. **Benchmark, then choose workers.** Fixtures: 2/10/50 members and 100/1,000/10,000 ledger
    events. Record cold/warm p50/p95, hardware, browser, CPU throttle, payload size, and

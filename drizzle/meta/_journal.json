@@ -15,6 +15,13 @@
       "when": 1795429439026,
       "tag": "0001_unique_group_members",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795431159958,
+      "tag": "0002_mutation_receipts",
+      "breakpoints": true
     }
   ]
 }

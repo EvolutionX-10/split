@@ -2,17 +2,16 @@
 
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { addExpense } from "@/lib/actions/expenses";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ArrowLeft, Check } from "lucide-react";
 import { CATEGORIES, type CATEGORY_ICONS } from "@/lib/constants";
-import { enqueueMutation } from "@/lib/offline/queue";
-import { isLikelyNetworkError } from "@/lib/offline/utils";
+import { submitMutation } from "@/lib/offline/sync";
 import { calculateSplits, type SplitType } from "@/lib/ledger/splits";
 import { formatMoney } from "@/lib/ledger/money";
+import PendingMutations from "./pending-mutations";
 
 type Member = { id: string; name: string | null; image: string | null };
 type Group = { id: string; name: string; accentColor: string };
@@ -33,6 +32,7 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 	const [percentages, setPercentages] = useState<Record<string, string>>({});
 	const [loading, setLoading] = useState(false);
 	const [errors, setErrors] = useState<Record<string, string>>({});
+	const [savedOffline, setSavedOffline] = useState(false);
 	const submittingRef = useRef(false);
 
 	function resetForm() {
@@ -93,22 +93,18 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 		};
 
 		try {
+			await submitMutation(currentUserId, { type: "add_expense", payload: input });
+			resetForm();
 			if (!navigator.onLine) {
-				await enqueueMutation({ type: "add_expense", groupId: group.id, payload: input });
-				router.push(`/groups/${group.id}`);
+				setSavedOffline(true);
 				return;
 			}
-			await addExpense(input);
-			resetForm();
 			router.push(`/groups/${group.id}`);
-		} catch (err) {
-			if (isLikelyNetworkError(err)) {
-				await enqueueMutation({ type: "add_expense", groupId: group.id, payload: input });
-				resetForm();
-				router.push(`/groups/${group.id}`);
-			} else {
-				setErrors((e) => ({ ...e, submit: "Something went wrong. Try again." }));
-			}
+		} catch {
+			setErrors((e) => ({
+				...e,
+				submit: "Could not save this change on your device. Keep this screen open and retry.",
+			}));
 		} finally {
 			setLoading(false);
 			submittingRef.current = false;
@@ -325,6 +321,8 @@ export default function AddExpenseForm({ group, members, currentUserId }: Props)
 				</div>
 
 				{errors.submit && <p className="text-destructive text-sm">{errors.submit}</p>}
+				{savedOffline && <p role="status">Saved on this device. Reconnect to sync.</p>}
+				<PendingMutations groupId={group.id} />
 			</div>
 
 			{/* Footer */}

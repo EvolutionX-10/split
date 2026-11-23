@@ -5,7 +5,6 @@ import { Inter } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Suspense } from "react";
 import MobileOnly from "@/components/providers/mobile-only";
-import OfflineProvider from "@/components/offline-provider";
 import FunkyLoader from "@/components/funky-loader";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -38,9 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 			<body>
 				<PWAProvider>
 					<MobileOnly>
-						<OfflineProvider>
-							<Suspense fallback={<FunkyLoader />}>{children}</Suspense>
-						</OfflineProvider>
+						<Suspense fallback={<FunkyLoader />}>{children}</Suspense>
 					</MobileOnly>
 				</PWAProvider>
 			</body>

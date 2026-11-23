@@ -1,6 +1,7 @@
-import { auth, signOut } from "@/auth";
+import { auth } from "@/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import SignOutButton from "@/components/sign-out-button";
+import Link from "next/link";
 
 export default async function ProfilePage() {
 	const session = await auth();
@@ -22,16 +23,11 @@ export default async function ProfilePage() {
 			</div>
 
 			<div className="mt-10">
-				<form
-					action={async () => {
-						"use server";
-						await signOut({ redirectTo: "/login" });
-					}}
-				>
-					<Button variant="destructive" className="w-full" type="submit">
-						Sign out
-					</Button>
-				</form>
+				<Link href="/sync" className="mb-4 block underline">
+					Review saved changes
+				</Link>
+				<p className="mb-4 text-sm">Pending changes stay on this device for your account when you sign out.</p>
+				<SignOutButton />
 			</div>
 		</div>
 	);

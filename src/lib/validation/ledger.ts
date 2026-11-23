@@ -16,6 +16,11 @@ export const userIdSchema = z.string().min(1).max(255);
 
 export const addExpenseInputSchema = z
 	.object({
+		ownerId: userIdSchema,
+		mutationId: z
+			.string()
+			.uuid()
+			.transform((value) => value.toLowerCase()),
 		groupId: z.string().uuid(),
 		amount: positiveMoneySchema,
 		description: z.string().trim().min(1).max(200),
@@ -55,6 +60,11 @@ export const addExpenseInputSchema = z
 
 export const settleUpInputSchema = z
 	.object({
+		ownerId: userIdSchema,
+		mutationId: z
+			.string()
+			.uuid()
+			.transform((value) => value.toLowerCase()),
 		groupId: z.string().uuid(),
 		fromUserId: userIdSchema,
 		toUserId: userIdSchema,

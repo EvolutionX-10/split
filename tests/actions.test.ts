@@ -41,12 +41,15 @@ const { sendReminder, markRead, markAllRead } = notificationActions;
 const { acceptInvite } = await import("@/lib/actions/invite");
 const { createGroup } = await import("@/lib/actions/groups");
 const { users } = authSchema;
-const { groups, groupMembers, expenses, expenseSplits, settlements, notifications } = appSchema;
+const { groups, groupMembers, expenses, expenseSplits, settlements, notifications, mutationReceipts } = appSchema;
+const { replayMutation } = await import("@/lib/actions/replay");
 const groupId = "10000000-0000-4000-8000-000000000001";
 const otherGroupId = "10000000-0000-4000-8000-000000000002";
 
 function expense(overrides: Partial<AddExpenseInput> = {}): AddExpenseInput {
 	return {
+		ownerId: currentUserId ?? "alice",
+		mutationId: crypto.randomUUID(),
 		groupId,
 		amount: "100.00",
 		description: "Dinner",
@@ -60,13 +63,22 @@ function expense(overrides: Partial<AddExpenseInput> = {}): AddExpenseInput {
 }
 
 function payment(overrides = {}) {
-	return { groupId, fromUserId: "alice", toUserId: "bob", amount: "10.00", ...overrides };
+	return {
+		ownerId: currentUserId ?? "alice",
+		mutationId: crypto.randomUUID(),
+		groupId,
+		fromUserId: "alice",
+		toUserId: "bob",
+		amount: "10.00",
+		...overrides,
+	};
 }
 
 async function expectNoWrites() {
 	for (const table of [expenses, expenseSplits, settlements, notifications]) {
 		expect(await db.select({ id: table.id }).from(table)).toHaveLength(0);
 	}
+	expect(await db.select().from(mutationReceipts)).toHaveLength(0);
 	expect(updateTag).not.toHaveBeenCalled();
 }
 
@@ -99,7 +111,7 @@ afterAll(async () => {
 });
 
 async function withRejectedInsert(
-	table: "expense_splits" | "group_members" | "notifications",
+	table: "expense_splits" | "group_members" | "notifications" | "mutation_receipts",
 	check: () => Promise<void>,
 ) {
 	await client.unsafe(
@@ -286,6 +298,133 @@ beforeEach(async () => {
 		]);
 	currentUserId = "alice";
 	updateTag.mockClear();
+});
+
+describe("durable mutation receipts", () => {
+	test("receipt insertion failure rolls back the ledger and the same ID remains retryable", async () => {
+		const input = expense();
+		await withRejectedInsert("mutation_receipts", async () => {
+			await expect(addExpense(input)).rejects.toThrow();
+			await expectNoWrites();
+		});
+		await addExpense(input);
+		expect(await db.select().from(expenses)).toHaveLength(1);
+	});
+	test("a different account cannot replay a payment even when it is the recipient", async () => {
+		const input = payment();
+		currentUserId = "bob";
+		expect(await replayMutation({ type: "settle_up", payload: input })).toEqual({
+			status: "blocked",
+			reason: "account",
+		});
+		await expectNoWrites();
+	});
+	test("a race with changed content commits exactly one version", async () => {
+		const input = expense();
+		const results = await Promise.allSettled([addExpense(input), addExpense({ ...input, amount: "101" })]);
+		expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+		expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+		expect(await db.select().from(expenses)).toHaveLength(1);
+		expect(await db.select().from(mutationReceipts)).toHaveLength(1);
+	});
+	test("receipt uniqueness is enforced by Postgres independently of the lock", async () => {
+		await addExpense(expense());
+		const [receipt] = await db.select().from(mutationReceipts);
+		await expect(db.insert(mutationReceipts).values(receipt).execute()).rejects.toThrow();
+		expect(await db.select().from(mutationReceipts)).toHaveLength(1);
+	});
+	test("a lost expense response can be replayed without a second ledger entry", async () => {
+		const input = expense();
+		const first = await addExpense(input);
+		const retried = await addExpense({ ...input, expenseDate: new Date(input.expenseDate.toISOString()) });
+		expect(retried.id).toBe(first.id);
+		expect(await db.select().from(expenses)).toHaveLength(1);
+		expect(await db.select().from(expenseSplits)).toHaveLength(2);
+		expect(await db.select().from(mutationReceipts)).toHaveLength(1);
+	});
+	test("concurrent expense replays commit one receipt and one set of shares", async () => {
+		const input = expense();
+		const results = await Promise.all(Array.from({ length: 8 }, () => addExpense(input)));
+		expect(new Set(results.map((row) => row.id)).size).toBe(1);
+		expect(await db.select().from(expenses)).toHaveLength(1);
+		expect(await db.select().from(mutationReceipts)).toHaveLength(1);
+	});
+	test("settlement retries and concurrent tabs record one payment", async () => {
+		const input = payment();
+		const results = await Promise.all(Array.from({ length: 8 }, () => settleUp(input)));
+		expect(new Set(results.map((row) => row.id)).size).toBe(1);
+		expect(await db.select().from(settlements)).toHaveLength(1);
+		expect((await settleUp(input)).id).toBe(results[0].id);
+	});
+	test("changed content or kind cannot reuse a committed request ID", async () => {
+		const input = expense();
+		await addExpense(input);
+		expect(await replayMutation({ type: "add_expense", payload: { ...input, amount: "101" } })).toEqual({
+			status: "blocked",
+			reason: "conflict",
+		});
+		expect(await replayMutation({ type: "settle_up", payload: payment({ mutationId: input.mutationId }) })).toEqual({
+			status: "blocked",
+			reason: "conflict",
+		});
+		expect(await db.select().from(expenses)).toHaveLength(1);
+		expect(await db.select().from(settlements)).toHaveLength(0);
+	});
+	test("another signed-in group member cannot replay the original account's work", async () => {
+		const input = expense();
+		currentUserId = "bob";
+		expect(await replayMutation({ type: "add_expense", payload: input })).toEqual({
+			status: "blocked",
+			reason: "account",
+		});
+		await expectNoWrites();
+	});
+	test("the same UUID is independent for different owners", async () => {
+		const input = expense();
+		await addExpense(input);
+		currentUserId = "bob";
+		await addExpense({ ...input, ownerId: "bob" });
+		expect(await db.select().from(expenses)).toHaveLength(2);
+		expect(await db.select().from(mutationReceipts)).toHaveLength(2);
+	});
+	test("expired sessions and removed memberships pause or reject replay", async () => {
+		const input = expense();
+		await addExpense(input);
+		currentUserId = null;
+		expect(await replayMutation({ type: "add_expense", payload: input })).toEqual({
+			status: "blocked",
+			reason: "session",
+		});
+		currentUserId = "alice";
+		await db.delete(groupMembers).where(eq(groupMembers.userId, "alice"));
+		expect(await replayMutation({ type: "add_expense", payload: input })).toEqual({
+			status: "blocked",
+			reason: "membership",
+		});
+		expect(await db.select().from(expenses)).toHaveLength(1);
+	});
+	test("failed ledger writes leave no receipt and the same ID can succeed on retry", async () => {
+		const input = expense();
+		await withRejectedInsert("expense_splits", async () => {
+			await expect(addExpense(input)).rejects.toThrow();
+			expect(await db.select().from(mutationReceipts)).toHaveLength(0);
+		});
+		await addExpense(input);
+		expect(await db.select().from(expenses)).toHaveLength(1);
+		expect(await db.select().from(mutationReceipts)).toHaveLength(1);
+	});
+	test("old unowned payloads and invalid IDs cannot create entries", async () => {
+		const { ownerId, mutationId, ...old } = expense();
+		expect(await replayMutation({ type: "add_expense", payload: old })).toEqual({
+			status: "blocked",
+			reason: "invalid",
+		});
+		expect(await replayMutation({ type: "add_expense", payload: { ...old, ownerId, mutationId: "bad" } })).toEqual({
+			status: "blocked",
+			reason: "invalid",
+		});
+		await expectNoWrites();
+	});
 });
 
 describe("expense action authorization and validation", () => {

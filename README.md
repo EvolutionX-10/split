@@ -30,10 +30,11 @@ A mobile-only progressive web app for splitting expenses with friends. Built wit
 **Progressive Web App**
 
 - Install on any device from the browser
-- Offline support: add expenses and settle up without internet
-- Mutations are queued in IndexedDB and synced automatically on reconnect
-- Pages cache on navigation for instant offline reads
-- Custom offline fallback page
+- Add expenses and settle up offline from already loaded screens
+- Account-scoped changes persist before sending and sync on reconnect
+- Durable server receipts prevent duplicate expenses/payments after retries
+- Review, retry, or deliberately discard saved changes in the sync center
+- Private account pages are never cached; offline reloads show a public fallback
 
 ## Tech Stack
 
@@ -60,12 +61,14 @@ A mobile-only progressive web app for splitting expenses with friends. Built wit
 - Cache invalidation via `updateTag` on every mutation
 - Query results aggregated in memory instead of per-row round trips
 
-**Offline-first mutations**
+**Account-scoped offline mutations**
 
-- `add expense` and `settle up` work fully offline
-- Mutations serialized to IndexedDB with status tracking (pending, syncing, failed)
-- Auto-flush queue on reconnect and on visibility change
-- Double-tap protection via `useRef` guard to prevent duplicate queue entries
+- Expense/payment intent and its request ID persist before the first network request
+- IndexedDB queues use composite account/request keys and separate waiting, syncing, failed, and paused states
+- Auto-flush on reconnect/visibility change; retries reuse the same owner and request ID
+- Server transactions commit the ledger write and a unique account/request receipt together
+- Changed payloads cannot reuse committed IDs; account/session/membership checks apply on every replay
+- Signing out retains pending work, hides account UI across tabs, and clears the active local account
 
 **Auth**
 
@@ -197,6 +200,46 @@ can use the current schema as described in setup. No automatic repair or product
 migration runs as part of the build. The new join transaction also works before the
 constraint is installed, so rollout does not depend on an `ON CONFLICT` target existing.
 
+### Offline queue and receipt rollout
+
+Apply [`drizzle/0002_mutation_receipts.sql`](drizzle/0002_mutation_receipts.sql) through
+your migration process **before deploying this version**. It adds an empty receipt
+table and does not rewrite existing ledger rows. Builds never run migrations.
+Keep receipts: deleting them can allow a delayed retry to write again.
+
+Every new expense/payment request requires `ownerId` and a UUID `mutationId`. The
+authenticated user must match the owner. The client writes both to IndexedDB before
+its first request; all retries must reuse the same ID and payload. Receipts and ledger
+writes share one transaction, with a database lock and composite primary key protecting
+concurrent replays. The same ID with different content is rejected. Old clients without
+these fields cannot write; reload older tabs when upgrading.
+
+IndexedDB version 2 preserves the original unowned `mutations` store and creates an
+account-scoped `ownedMutations` store. Legacy records are not displayed, reassigned, or
+sent automatically. Keep the original device for manual recovery: verify the original
+account and reconcile against server history before manually re-entering any old work.
+An old request may already have committed without a receipt; importing it with a fresh
+ID could duplicate it. No automatic recovery or deletion guesses an old record's owner.
+
+Use **Review saved changes** on Profile or the sync banner to retry failed changes or
+confirm discarding a local entry. Discarding does not undo a ledger entry that already
+committed. Sign-out preserves every account's pending changes; signing back into that
+account resumes its queue. Expired sessions pause replay, and changed membership or
+invalid/conflicting content requires review. Browser storage must be available to save;
+a storage failure keeps the form open and does not send the mutation.
+
+The service worker caches only public static assets and the generic offline fallback.
+It removes the previous app's known HTML/RSC/API runtime caches during activation.
+Private HTML, RSC, and session responses are never reused across accounts. Loaded forms
+still support offline saves, and queued changes survive reload, but loading an account
+page while offline shows the public fallback. Full account-scoped offline snapshots
+remain future work. Account changes and logout lock stale tabs; a full navigation and
+page-hide gate prevent retaining account UI in the previous navigation state.
+
+Run `bun test tests/offline.test.ts` for IndexedDB/queue tests without Postgres. The full
+suite also tests real-Postgres receipts, lost-response retries, concurrent writes,
+payload conflicts, session/owner/membership boundaries, and rollback.
+
 ## Database Schema
 
 ```
@@ -207,6 +250,7 @@ expenses        amount, category, split type, paid by
 expense_splits  per-member owed amount for each expense
 settlements     explicit pay-back transactions between members
 notifications   member joined, reminders, settlements
+mutation_receipts account/request uniqueness, payload hash, committed ledger ID
 ```
 
 ## Project Structure

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, pgEnum, boolean, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, pgEnum, boolean, unique, primaryKey } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { users } from "./auth";
 
@@ -123,8 +123,24 @@ export const settlements = pgTable("settlements", {
 	settledAt: timestamp("settledAt", { mode: "date" }).notNull().defaultNow(),
 });
 
-// --- Notifications ---
+// --- Durable mutation receipts ---
 
+export const mutationReceipts = pgTable(
+	"mutation_receipts",
+	{
+		ownerId: text("ownerId")
+			.notNull()
+			.references(() => users.id, { onDelete: "cascade" }),
+		mutationId: text("mutationId").notNull(),
+		kind: text("kind").notNull(),
+		payloadHash: text("payloadHash").notNull(),
+		entityId: text("entityId").notNull(),
+		createdAt: timestamp("createdAt", { mode: "date" }).notNull().defaultNow(),
+	},
+	(table) => [primaryKey({ columns: [table.ownerId, table.mutationId] })],
+);
+
+// --- Notifications ---
 export const notifications = pgTable("notifications", {
 	id: text("id")
 		.primaryKey()

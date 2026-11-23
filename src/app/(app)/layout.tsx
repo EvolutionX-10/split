@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import BottomNav from "@/components/bottom-nav";
 import { Suspense } from "react";
 import { getUnreadCountCache } from "@/lib/cache/groups";
-import CacheWarmer from "@/components/cache-warmer";
+import OfflineProvider from "@/components/offline-provider";
 import FunkyLoader from "@/components/funky-loader";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -13,14 +13,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 	const unreadCount = await getUnreadCountCache(session.user.id);
 
 	return (
-		<div className="relative mx-auto flex h-dvh max-w-md flex-col">
-			<CacheWarmer />
-			<main className="flex-1 overflow-y-auto pb-16">
-				<Suspense fallback={<FunkyLoader />}>
-					{children}
-				</Suspense>
-			</main>
-			<BottomNav unreadCount={unreadCount} />
-		</div>
+		<OfflineProvider key={session.user.id} ownerId={session.user.id}>
+			<div className="relative mx-auto flex h-dvh max-w-md flex-col">
+				<main className="flex-1 overflow-y-auto pb-16">
+					<Suspense fallback={<FunkyLoader />}>{children}</Suspense>
+				</main>
+				<BottomNav unreadCount={unreadCount} />
+			</div>
+		</OfflineProvider>
 	);
 }
