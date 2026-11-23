@@ -1,16 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
-import { settleUp } from "@/lib/actions/settlements";
 import { useRouter } from "next/navigation";
 import { sendReminder } from "@/lib/actions/notifications";
-import { enqueueMutation } from "@/lib/offline/queue";
-import { isLikelyNetworkError } from "@/lib/offline/utils";
+import { submitMutation } from "@/lib/offline/sync";
 
 type Props = {
 	balance: { userId: string; name: string; image: string | null; net: number };
@@ -29,40 +27,29 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 
-	async function handleSettle() {
-		if (!settleAmount || parseFloat(settleAmount) <= 0) return setError("Enter a valid amount");
-
+	const savingRef = useRef(false);
+	async function recordPayment(fromUserId: string, toUserId: string, value: string) {
+		if (savingRef.current) return;
+		savingRef.current = true;
 		setLoading(true);
 		setError("");
-
-		const input = {
-			groupId,
-			fromUserId: currentUserId,
-			toUserId: balance.userId,
-			amount: settleAmount,
-			note,
-		};
 		try {
-			if (!navigator.onLine) {
-				await enqueueMutation({ type: "settle_up", groupId, payload: input });
-				setOpen(false);
-				router.refresh();
-				return;
-			}
-			await settleUp(input);
+			await submitMutation(currentUserId, {
+				type: "settle_up",
+				payload: { groupId, fromUserId, toUserId, amount: value, note },
+			});
 			setOpen(false);
-			router.refresh();
-		} catch (err) {
-			if (isLikelyNetworkError(err)) {
-				await enqueueMutation({ type: "settle_up", groupId, payload: input });
-				setOpen(false);
-				router.refresh();
-				return;
-			}
-			setError("Something went wrong. Try again.");
+			if (navigator.onLine) router.refresh();
+		} catch {
+			setError("Could not save this change on your device. Keep this screen open and retry.");
 		} finally {
+			savingRef.current = false;
 			setLoading(false);
 		}
+	}
+	async function handleSettle() {
+		if (!settleAmount || parseFloat(settleAmount) <= 0) return setError("Enter a valid amount");
+		await recordPayment(currentUserId, balance.userId, settleAmount);
 	}
 
 	return (
@@ -141,37 +128,7 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 									</Button>
 									<Button
 										className="flex-1"
-										onClick={async () => {
-											setLoading(true);
-											const input = {
-												groupId,
-												fromUserId: balance.userId,
-												toUserId: currentUserId, // they pay me
-												amount,
-												note,
-											};
-											try {
-												if (!navigator.onLine) {
-													await enqueueMutation({ type: "settle_up", groupId, payload: input });
-													setOpen(false);
-													router.refresh();
-													return;
-												}
-												await settleUp(input);
-												setOpen(false);
-												router.refresh();
-											} catch (err) {
-												if (isLikelyNetworkError(err)) {
-													await enqueueMutation({ type: "settle_up", groupId, payload: input });
-													setOpen(false);
-													router.refresh();
-													return;
-												}
-												setError("Something went wrong.");
-											} finally {
-												setLoading(false);
-											}
-										}}
+										onClick={() => void recordPayment(balance.userId, currentUserId, amount)}
 										disabled={loading}
 									>
 										Mark settled

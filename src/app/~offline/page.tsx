@@ -9,8 +9,7 @@ export default function OfflinePage() {
 			<div>
 				<p className="text-foreground font-medium">You're offline</p>
 				<p className="text-muted-foreground mt-1 max-w-xs text-sm">
-					This page hasn't loaded before, so it isn't available offline yet. It'll work normally once you're back
-					online.
+					Reconnect to load account pages. Pending changes stay on this device for the account that saved them.
 				</p>
 			</div>
 		</main>

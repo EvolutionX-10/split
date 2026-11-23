@@ -1,0 +1,22 @@
+{
+	"checks": [
+		"upgrade deletes legacy URL-keyed private cache",
+		"legacy queue is preserved without exposing its content",
+		"session verification is not cacheable",
+		"committed expense with lost response replays the same ID exactly once",
+		"membership rejection shows attention state and explicit retry succeeds after access returns",
+		"offline save is durable",
+		"account B cannot view or replay account A pending work",
+		"returning account A syncs only A while B changes remain saved",
+		"saved changes screen fits a 320px viewport",
+		"real sign-out preserves pending changes and locks other tabs",
+		"signing back in resumes only that account queue",
+		"storage failure keeps the form and performs no ledger write",
+		"private pages are absent from Cache Storage",
+		"offline reload serves a public fallback without private data"
+	],
+	"errors": [],
+	"date": "2026-11-23",
+	"environment": "Production Next.js; Chromium; disposable Postgres 17; database sessions",
+	"oauth": "Google OAuth was not exercised"
+}

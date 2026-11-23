@@ -1,47 +1,39 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { AddExpenseInput } from "@/lib/actions/expenses";
-import type { SettleUpInput } from "@/lib/actions/settlements";
+import type { MutationRequest } from "./protocol";
 
-export type QueuedMutation =
-	| {
-			id: string;
-			type: "add_expense";
-			groupId: string;
-			payload: AddExpenseInput;
-			status: "pending" | "syncing" | "failed";
-			createdAt: number;
-			retryCount: number;
-			error?: string;
-	  }
-	| {
-			id: string;
-			type: "settle_up";
-			groupId: string;
-			payload: SettleUpInput;
-			status: "pending" | "syncing" | "failed";
-			createdAt: number;
-			retryCount: number;
-			error?: string;
-	  };
-
+export type QueuedMutation = MutationRequest & {
+	id: string;
+	ownerId: string;
+	version: 2;
+	status: "pending" | "syncing" | "failed" | "paused";
+	createdAt: number;
+	error?: string;
+};
 interface OfflineDB extends DBSchema {
-	mutations: {
-		key: string;
-		value: QueuedMutation;
-		indexes: { "by-groupId": string };
-	};
+	// Unowned version-1 rows are preserved but never displayed or replayed by an account.
+	mutations: { key: string; value: unknown; indexes: { "by-groupId": string } };
+	ownedMutations: { key: [string, string]; value: QueuedMutation; indexes: { "by-owner": string } };
 }
-
 let dbPromise: Promise<IDBPDatabase<OfflineDB>> | null = null;
-
 export function getDB() {
-	if (!dbPromise) {
-		dbPromise = openDB<OfflineDB>("split-offline", 1, {
+	if (!dbPromise)
+		dbPromise = openDB<OfflineDB>("split-offline", 2, {
 			upgrade(db) {
-				const store = db.createObjectStore("mutations", { keyPath: "id" });
-				store.createIndex("by-groupId", "groupId");
+				if (!db.objectStoreNames.contains("mutations"))
+					db.createObjectStore("mutations", { keyPath: "id" }).createIndex("by-groupId", "groupId");
+				if (!db.objectStoreNames.contains("ownedMutations"))
+					db.createObjectStore("ownedMutations", { keyPath: ["ownerId", "id"] }).createIndex("by-owner", "ownerId");
 			},
+			blocking() {
+				void dbPromise?.then((db) => db.close());
+				dbPromise = null;
+			},
+			blocked() {
+				if (typeof window !== "undefined") window.dispatchEvent(new Event("split-storage-blocked"));
+			},
+		}).catch((error) => {
+			dbPromise = null;
+			throw error;
 		});
-	}
 	return dbPromise;
 }

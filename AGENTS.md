@@ -72,6 +72,13 @@ Keep each PR focused and update completed roadmap items with actual validation e
   logout, expired-session, retry, and account-switch behavior before changing replay.
 - Do not silently discard unsynced records, change historical balances, or mark a local
   preview as successfully synced before server acknowledgement.
+- Expense/payment inputs require `ownerId` and `mutationId`. Persist them before any
+  request, reuse them unchanged on retry, and never automatically adopt legacy unowned
+  queue entries. Ledger writes and `mutation_receipts` must commit atomically.
+- The worker caches public assets only. Do not restore URL-keyed private HTML/RSC/API
+  caching; account-scoped snapshots require a separate ownership and invalidation design.
+- IndexedDB-only checks: `bun test tests/offline.test.ts`. Apply the receipt migration
+  before runtime deployment; never delete receipts as a cache cleanup shortcut.
 
 ## UI and accessibility
 
