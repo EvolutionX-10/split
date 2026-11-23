@@ -116,6 +116,49 @@ bun dev
 
 > Note: The PWA service worker is disabled in development. Run `bun build && bun start` to test offline features.
 
+## Validation
+
+```bash
+bun run typecheck
+bun run build
+```
+
+The action regression suite uses Bun's test runner and **real Postgres**. Session and
+Next.js cache boundaries are substituted in the tests; production authentication stays
+unchanged. Tests call the expense, settlement, invitation, and notification actions
+directly to cover unauthorized callers, invalid splits, payment recording rights,
+reminder debt eligibility, and concurrent cooldown enforcement.
+
+Start a disposable local database (the password below is only for this test container):
+
+```bash
+docker run --rm --detach --name split-action-tests \
+  --publish 127.0.0.1:55432:5432 \
+  --env POSTGRES_PASSWORD=split-test-only \
+  --env POSTGRES_DB=split_actions_test postgres:17-alpine
+docker exec split-action-tests pg_isready -U postgres -d split_actions_test
+```
+
+Once Postgres is ready:
+
+```bash
+TEST_DATABASE_URL=postgres://postgres:split-test-only@127.0.0.1:55432/split_actions_test bun run test
+docker stop split-action-tests
+```
+
+The suite requires a local host and a database name ending in `_test`. It creates a
+random schema, applies the migrations there, and drops that schema afterward. The test
+database user needs permission to create schemas. It never falls back to the app's
+`DATABASE_URL`; do not supply a shared or production database. CI runs this suite,
+type checking, and the production build with Bun 1.3.14 and Postgres 17.
+
+Server actions now require every payer/split/payment participant to belong to the
+group. Any member can log an expense on behalf of another member; only a payment's
+sender or recipient can record it. Amounts must be positive and fit `numeric(10, 2)`;
+expenses support up to 100 distinct split participants, and exact/percentage inputs
+must total the expense/100%. Reminders require a positive current debt between the
+sender and recipient and allow one reminder per sender/recipient/group per 24 hours.
+
 ## Database Schema
 
 ```

@@ -1,36 +1,12 @@
 "use server";
 
 import { db } from "@/db";
-import { expenses, expenseSplits, groupMembers } from "@/db/schema/app";
+import { expenses, expenseSplits } from "@/db/schema/app";
 import { auth } from "@/auth";
-import { eq, and } from "drizzle-orm";
 import { updateTag } from "next/cache";
-import { z } from "zod";
-
-const addExpenseInputSchema = z.object({
-	groupId: z.string().uuid(),
-	amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
-	description: z.string().min(1).max(200),
-	category: z.enum(["food", "transport", "accommodation", "entertainment", "shopping", "utilities", "health", "other"]),
-	splitType: z.enum(["equal", "percentage", "exact"]),
-	expenseDate: z.coerce.date(),
-	paidBy: z.string(),
-	splits: z
-		.array(
-			z.object({
-				userId: z.string(),
-				amount: z
-					.string()
-					.regex(/^\d+(\.\d{1,2})?$/)
-					.optional(), // for exact
-				percentage: z
-					.string()
-					.regex(/^\d+(\.\d{1,2})?$/)
-					.optional(), // for percentage
-			}),
-		)
-		.min(1),
-});
+import type { z } from "zod";
+import { addExpenseInputSchema } from "@/lib/validation/ledger";
+import { requireGroupMembers } from "@/lib/server/group-access";
 
 export type AddExpenseInput = z.infer<typeof addExpenseInputSchema>;
 
@@ -43,14 +19,8 @@ export async function addExpense(input: AddExpenseInput) {
 
 	const { groupId, amount, description, category, splitType, expenseDate, paidBy, splits } = parsed.data;
 
-	// Verify current user is a member
-	const membership = await db
-		.select()
-		.from(groupMembers)
-		.where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.userId, session.user.id)))
-		.then((r) => r[0] ?? null);
-
-	if (!membership) throw new Error("Not a member");
+	// Any group member may record an expense, including one paid by another member.
+	await requireGroupMembers(groupId, [session.user.id, paidBy, ...splits.map((split) => split.userId)]);
 
 	const totalAmount = parseFloat(amount);
 

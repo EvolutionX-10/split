@@ -3,9 +3,39 @@
 Research and baseline: **23 November 2026 (Asia/Kolkata)**. Audited revision:
 `8b5001db38a57301a3bc9ec8554e2d539e11b20a` (`origin/main`).
 
-This first PR adds the roadmap, contributor instructions, and baseline evidence.
-Implementation tasks below remain open. The goal is a responsive expense workspace
+Planning PR #1 added the roadmap, contributor instructions, and baseline evidence.
+Progress is recorded below; other implementation tasks remain open. The goal is a responsive expense workspace
 with trustworthy balances, quick local feedback, useful everyday features, and reliable sync.
+
+## Implementation progress
+
+### Action authorization and validation — 23 November 2026
+
+- [x] **P0-A:** Only a payment participant can record a settlement; the caller and both
+      participants must belong to the group. Self-payments and invalid amounts are rejected;
+      partial payments, overpayments, and recording money received remain supported.
+- [x] **P0-B:** Expense actions validate payer/split memberships, participant uniqueness,
+      positive bounded amounts, a maximum of 100 participants, and exact/percentage totals
+      using integer hundredths. Recording another member's expense remains supported.
+- [x] **P0-F:** Member-joined notifications use a server-only internal helper. Reminders
+      require both memberships and a current positive bilateral debt. A transaction and
+      group row lock enforce a 24-hour sender/recipient/group cooldown across concurrent requests.
+      The drawer displays cooldown and already-paid feedback.
+- [x] Add `test`/`typecheck` scripts, local database instructions, and CI using pinned
+      Bun 1.3.14, a frozen lockfile, and disposable Postgres 17.
+
+Validation: **63 integration tests passed** against real Postgres, including eight
+simultaneous reminder requests producing one notification. Tests substitute session/cache
+boundaries and isolate all database operations in a temporary schema; production auth is
+unchanged. TypeScript, production build, and frozen-lockfile installation passed.
+A production Chromium smoke test used a standard database session in a separate disposable
+database: group access, reminder persistence, cooldown feedback, already-paid feedback
+with a stale open drawer, and anonymous redirect all passed without uncaught page errors.
+Google OAuth itself was not exercised.
+
+**Still open:** P0-C shared allocation/rounding, P0-D/E queue ownership/idempotency,
+P1-A atomic ledger/group creation and membership uniqueness, and all responsive work.
+The audit below describes the original revision; this section records the fixes since then.
 
 ## 1. What exists and how it feels
 

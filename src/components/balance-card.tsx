@@ -41,7 +41,7 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 			toUserId: balance.userId,
 			amount: settleAmount,
 			note,
-		}
+		};
 		try {
 			if (!navigator.onLine) {
 				await enqueueMutation({ type: "settle_up", groupId, payload: input });
@@ -117,9 +117,18 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 										className="flex-1"
 										onClick={async () => {
 											setLoading(true);
+											setError("");
 											try {
-												await sendReminder(groupId, balance.userId);
-												setOpen(false);
+												const result = await sendReminder(groupId, balance.userId);
+												if (result.status === "sent") {
+													setOpen(false);
+												} else {
+													setError(
+														result.status === "cooldown"
+															? "You can remind this person once every 24 hours."
+															: "This person no longer owes you money.",
+													);
+												}
 											} catch {
 												setError("Something went wrong.");
 											} finally {
@@ -168,6 +177,11 @@ export default function BalanceCard({ balance, groupId, currentUserId }: Props) 
 										Mark settled
 									</Button>
 								</div>
+								{error && (
+									<p role="alert" className="text-destructive text-xs">
+										{error}
+									</p>
+								)}
 							</div>
 						) : (
 							// I owe them — settle up
